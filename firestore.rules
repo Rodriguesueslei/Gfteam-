@@ -1,0 +1,220 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: students
+    // Fields: name (string), email (string), phone (string), belt (string), 
+    //         stripes (number), joinDate (timestamp), status (string),
+    //         lastPaymentDate (timestamp), nextPaymentDate (timestamp),
+    //         birthDate (string), address (string), guardianName (string),
+    //         guardianDoc (string), guardianEmail (string), guardianPhone (string)
+    //
+    // Collection: classes
+    // Fields: title (string), instructor (string), startTime (timestamp), 
+    //         endTime (timestamp), maxCapacity (number), attendees (list of strings)
+    //
+    // Collection: payments
+    // Fields: studentId (string), amount (number), date (timestamp), 
+    //         method (string), period (string)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasRole(role) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             getUserData().role == role;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+             (hasRole('admin') || 
+              (request.auth.token.email == "rodrigues.ueslei@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isReceptionist() {
+      return hasRole('receptionist');
+    }
+
+    function isProfessor() {
+      return hasRole('professor');
+    }
+
+    function isCheckInTablet() {
+      return hasRole('checkin_tablet');
+    }
+
+    function isValidStudent(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.email is string && data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
+             data.belt is string &&
+             data.status in ['Active', 'Inactive', 'Archived'] &&
+             data.category in ['Adulto', 'Kids', 'Juvenil'] &&
+             (!('disability' in data) || data.disability is string) &&
+             (!('faceDescriptor' in data) || data.faceDescriptor is string) &&
+             (!('facePhoto' in data) || data.facePhoto is string) &&
+             (!('planId' in data) || data.planId is string);
+    }
+
+    function isValidClass(data) {
+      return data.title is string && data.title.size() > 0 && data.title.size() < 100 &&
+             data.startTime is string && data.endTime is string &&
+             (!('categories' in data) || data.categories is list) &&
+             (!('instructorIds' in data) || data.instructorIds is list) &&
+             (!('daysOfWeek' in data) || data.daysOfWeek is list) &&
+             (!('dayOfWeek' in data) || data.dayOfWeek is string) &&
+             (!('isRecurring' in data) || data.isRecurring is bool) &&
+             (!('recurrenceId' in data) || data.recurrenceId is string) &&
+             (!('recurrenceWeeks' in data) || data.recurrenceWeeks is number) &&
+             (!('capacity' in data) || data.capacity is number);
+    }
+
+    function isValidPayment(data) {
+      return data.studentId is string && data.amount is number && data.amount > 0 &&
+             data.date is timestamp && data.period is string &&
+             data.method in ['Cash', 'Card', 'Transfer', 'Pix'];
+    }
+
+    function isValidGraduation(data) {
+      return data.studentId is string && 
+             data.belt is string &&
+             data.stripes is number && data.stripes >= 0 && data.stripes <= 4 &&
+             data.date is timestamp;
+    }
+
+    function isValidPlan(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.price is number && data.price >= 0 &&
+             data.durationMonths is number && data.durationMonths > 0 &&
+             data.status in ['Active', 'Inactive'];
+    }
+
+    function isValidInstallment(data) {
+      return data.saleId is string &&
+             data.amount is number && data.amount > 0 &&
+             data.installmentNumber is number && data.installmentNumber > 0 &&
+             data.totalInstallments is number && data.totalInstallments > 0 &&
+             data.dueDate is timestamp &&
+             data.status in ['pending', 'paid'] &&
+             (!('studentId' in data) || data.studentId is string || data.studentId == null) &&
+             (!('studentName' in data) || data.studentName is string) &&
+             (!('productName' in data) || data.productName is string) &&
+             (!('paymentMethod' in data) || data.paymentMethod is string) &&
+             (!('paidAt' in data) || data.paidAt is timestamp);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId && !('role' in request.resource.data));
+      // Allow users to bootstrap their own profile but not set their own role unless they are the default admin
+      allow create: if isAuthenticated() && request.auth.uid == userId && 
+                    (request.resource.data.role == 'user' || isAdmin());
+      allow delete: if isAdmin();
+    }
+
+    match /students/{studentId} {
+      allow read: if isAuthenticated();
+      allow create, update: if (isAdmin() || isReceptionist()) && isValidStudent(request.resource.data);
+      allow delete: if isAdmin() || isReceptionist();
+    }
+
+    match /classes/{classId} {
+      allow read: if isAuthenticated();
+      allow create, delete: if isAdmin() || isReceptionist();
+      
+      // Full update for Admin/Receptionist
+      allow update: if (isAdmin() || isReceptionist()) && isValidClass(request.resource.data);
+      
+      // Partial updates
+      allow update: if (isAdmin() || isProfessor() || isCheckInTablet()) && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presence']);
+      
+      allow update: if isAuthenticated() && 
+                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendees']) &&
+                    request.resource.data.attendees.size() <= resource.data.maxCapacity;
+
+      match /checkIns/{checkInId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated();
+      }
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isAdmin() || isReceptionist();
+      allow create, update: if isAdmin() && isValidPayment(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /instructors/{instructorId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAdmin() || isReceptionist();
+    }
+
+    match /graduations/{graduationId} {
+      allow read: if isAuthenticated();
+      allow create, update: if (isAdmin() || isProfessor() || isReceptionist()) && isValidGraduation(request.resource.data);
+      allow delete: if isAdmin() || isProfessor() || isReceptionist();
+    }
+
+    match /belts/{beltId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isReceptionist();
+    }
+
+    match /sales/{saleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin() || isReceptionist();
+    }
+
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /plans/{planId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin() && isValidPlan(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /expenses/{expenseId} {
+      allow read: if isAdmin() || isReceptionist();
+      allow create, update: if isAdmin() || isReceptionist();
+      allow delete: if isAdmin();
+    }
+
+    match /checkins/{checkInId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin() || isReceptionist();
+    }
+
+    match /installments/{installmentId} {
+      allow read: if isAdmin() || isReceptionist();
+      allow create, update: if (isAdmin() || isReceptionist()) && isValidInstallment(request.resource.data);
+      allow delete: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "name": "Gfteam Limeira",
+  "description": "Sistema completo para gestão de academias de Jiu-Jitsu, incluindo controle de alunos, mensalidades, agendamento de aulas e progresso técnico.",
+  "requestFramePermissions": ["camera"]
+}

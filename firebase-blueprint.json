@@ -1,0 +1,236 @@
+{
+  "entities": {
+    "belt": {
+      "title": "Belt",
+      "description": "A belt rank configuration",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the belt (e.g., White, Blue)" },
+        "color": { "type": "string", "description": "Hex color code or CSS class" },
+        "order": { "type": "number", "description": "Display order" }
+      },
+      "required": ["name", "color", "order"]
+    },
+    "student": {
+      "title": "Student",
+      "description": "A student enrolled in the Jiu-Jitsu academy",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name of the student" },
+        "email": { "type": "string", "format": "email", "description": "Email address" },
+        "phone": { "type": "string", "description": "Phone number" },
+        "birthDate": { "type": "string", "format": "date", "description": "Date of birth" },
+        "address": { "type": "string", "description": "Home address" },
+        "belt": { "type": "string", "description": "Current belt rank" },
+        "stripes": { "type": "number", "description": "Number of stripes on the current belt" },
+        "joinDate": { "type": "string", "format": "date-time", "description": "When the student joined" },
+        "status": { "type": "string", "enum": ["Active", "Inactive", "Archived"], "description": "Enrollment status" },
+        "category": { "type": "string", "enum": ["Adulto", "Kids", "Juvenil"], "description": "Student category" },
+        "lastPaymentDate": { "type": "string", "format": "date-time", "description": "Date of the last tuition payment" },
+        "nextPaymentDate": { "type": "string", "format": "date-time", "description": "Due date for the next payment" },
+        "guardianName": { "type": "string", "description": "Name of the guardian (for minors)" },
+        "guardianDoc": { "type": "string", "description": "Document of the guardian (for minors)" },
+        "guardianEmail": { "type": "string", "format": "email", "description": "Email of the guardian (for minors)" },
+        "guardianPhone": { "type": "string", "description": "Phone of the guardian (for minors)" },
+        "facialId": { "type": "string", "description": "Unique ID for facial recognition data" },
+        "faceDescriptor": { "type": "string", "description": "JSON stringified array of face embeddings" },
+        "facePhoto": { "type": "string", "description": "Base64 string of the student's face photo" },
+        "monthlyFee": { "type": "number", "description": "Monthly tuition fee amount" },
+        "planId": { "type": "string", "description": "ID of the student's current plan" }
+      },
+      "required": ["name", "email", "belt", "status", "category"]
+    },
+    "plan": {
+      "title": "Plan",
+      "description": "A membership plan type",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the plan (e.g., Monthly, Annual)" },
+        "price": { "type": "number", "description": "Price of the plan" },
+        "durationMonths": { "type": "number", "description": "Duration of the plan in months" },
+        "description": { "type": "string", "description": "Short description of the plan" },
+        "status": { "type": "string", "enum": ["Active", "Inactive"], "description": "Plan status" }
+      },
+      "required": ["name", "price", "durationMonths", "status"]
+    },
+    "class": {
+      "title": "Class",
+      "description": "A scheduled Jiu-Jitsu class",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string", "description": "Name of the class (e.g., Fundamentals, Advanced)" },
+        "instructorIds": { "type": "array", "items": { "type": "string" }, "description": "IDs of the instructors" },
+        "categories": { "type": "array", "items": { "type": "string" }, "description": "Class categories (e.g., Adulto, Kids, Juvenil)" },
+        "startTime": { "type": "string", "format": "date-time", "description": "Class start time" },
+        "endTime": { "type": "string", "format": "date-time", "description": "Class end time" },
+        "dayOfWeek": { "type": "string", "description": "Day of the week for the class" },
+        "isRecurring": { "type": "boolean", "description": "Whether the class repeats weekly" },
+        "recurrenceId": { "type": "string", "description": "ID to group recurring instances" },
+        "maxCapacity": { "type": "number", "description": "Maximum number of students" },
+        "attendees": { "type": "array", "description": "List of student IDs registered for this class" },
+        "presence": { "type": "array", "description": "List of student IDs marked as present" }
+      },
+      "required": ["title", "startTime", "endTime"]
+    },
+    "payment": {
+      "title": "Payment",
+      "description": "A tuition payment record",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "description": "ID of the student who paid" },
+        "amount": { "type": "number", "description": "Amount paid" },
+        "date": { "type": "string", "format": "date-time", "description": "Date of payment" },
+        "method": { "type": "string", "enum": ["Cash", "Card", "Transfer"], "description": "Payment method" },
+        "period": { "type": "string", "description": "Month/Year the payment covers" }
+      },
+      "required": ["studentId", "amount", "date", "period"]
+    },
+    "instructor": {
+      "title": "Instructor",
+      "description": "A Jiu-Jitsu instructor",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Full name of the instructor" },
+        "email": { "type": "string", "format": "email", "description": "Email address" },
+        "phone": { "type": "string", "description": "Phone number" },
+        "belt": { "type": "string", "description": "Belt rank" },
+        "bio": { "type": "string", "description": "Short biography" }
+      },
+      "required": ["name", "belt"]
+    },
+    "graduation": {
+      "title": "Graduation",
+      "description": "A record of a student's belt or stripe promotion",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "description": "ID of the student" },
+        "belt": { "type": "string", "enum": ["White", "Blue", "Purple", "Brown", "Black"], "description": "Belt rank promoted to" },
+        "stripes": { "type": "number", "description": "Number of stripes promoted to" },
+        "date": { "type": "string", "format": "date-time", "description": "Date of promotion" },
+        "instructorName": { "type": "string", "description": "Name of the instructor who promoted the student" },
+        "notes": { "type": "string", "description": "Optional notes about the promotion" }
+      },
+      "required": ["studentId", "belt", "stripes", "date"]
+    },
+    "product": {
+      "title": "Product",
+      "description": "An item in the academy shop",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the product" },
+        "category": { "type": "string", "description": "Category (e.g., Kimono, Belt, Rash Guard)" },
+        "price": { "type": "number", "description": "Selling price" },
+        "cost": { "type": "number", "description": "Cost price" },
+        "stock": { "type": "number", "description": "Current stock quantity" },
+        "minStock": { "type": "number", "description": "Minimum stock level for alerts" }
+      },
+      "required": ["name", "category", "price", "stock"]
+    },
+    "sale": {
+      "title": "Sale",
+      "description": "A record of a product sale",
+      "type": "object",
+      "properties": {
+        "productId": { "type": "string", "description": "ID of the product sold" },
+        "productName": { "type": "string", "description": "Name of the product at time of sale" },
+        "studentId": { "type": "string", "description": "ID of the student who purchased" },
+        "studentName": { "type": "string", "description": "Name of the student at time of sale" },
+        "quantity": { "type": "number", "description": "Quantity sold" },
+        "total": { "type": "number", "description": "Total sale amount" },
+        "date": { "type": "string", "format": "date-time", "description": "Date of sale" },
+        "paymentMethod": { "type": "string", "enum": ["Cash", "Card", "Transfer"], "description": "Payment method" }
+      },
+      "required": ["productId", "quantity", "total", "date"]
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "Global application settings",
+      "type": "object",
+      "properties": {
+        "logoUrl": { "type": "string", "description": "URL or Base64 of the academy logo" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      }
+    },
+    "expense": {
+      "title": "Expense",
+      "description": "An academy expense record",
+      "type": "object",
+      "properties": {
+        "description": { "type": "string", "description": "Description of the expense" },
+        "amount": { "type": "number", "description": "Amount spent" },
+        "category": { "type": "string", "description": "Category (e.g., Rent, Electricity, Salaries)" },
+        "date": { "type": "string", "format": "date-time", "description": "Date of expense" }
+      },
+      "required": ["description", "amount", "date", "category"]
+    },
+    "installment": {
+      "title": "Installment",
+      "description": "A record of a product sale installment",
+      "type": "object",
+      "properties": {
+        "saleId": { "type": "string", "description": "ID of the related sale" },
+        "studentId": { "type": "string", "description": "ID of the student" },
+        "studentName": { "type": "string", "description": "Name of the student" },
+        "productName": { "type": "string", "description": "Name of the product" },
+        "amount": { "type": "number", "description": "Installment amount" },
+        "installmentNumber": { "type": "number", "description": "Current installment number" },
+        "totalInstallments": { "type": "number", "description": "Total number of installments" },
+        "dueDate": { "type": "string", "format": "date-time", "description": "Due date" },
+        "status": { "type": "string", "enum": ["pending", "paid"], "description": "Payment status" },
+        "paymentMethod": { "type": "string", "description": "Payment method" },
+        "paidAt": { "type": "string", "format": "date-time", "description": "When it was paid" }
+      },
+      "required": ["saleId", "amount", "installmentNumber", "totalInstallments", "dueDate", "status"]
+    }
+  },
+  "firestore": {
+    "/students/{studentId}": {
+      "schema": "student",
+      "description": "Collection of academy students"
+    },
+    "/classes/{classId}": {
+      "schema": "class",
+      "description": "Scheduled classes and attendance"
+    },
+    "/payments/{paymentId}": {
+      "schema": "payment",
+      "description": "Tuition payment history"
+    },
+    "/instructors/{instructorId}": {
+      "schema": "instructor",
+      "description": "Collection of academy instructors"
+    },
+    "/graduations/{graduationId}": {
+      "schema": "graduation",
+      "description": "History of student belt and stripe promotions"
+    },
+    "/belts/{beltId}": {
+      "schema": "belt",
+      "description": "Configuration for belt ranks"
+    },
+    "/products/{productId}": {
+      "schema": "product",
+      "description": "Inventory of products for sale"
+    },
+    "/sales/{saleId}": {
+      "schema": "sale",
+      "description": "History of product sales"
+    },
+    "/plans/{planId}": {
+      "schema": "plan",
+      "description": "Collection of membership plan types"
+    },
+    "/settings/{settingId}": {
+      "schema": "settings",
+      "description": "Global application settings"
+    },
+    "/expenses/{expenseId}": {
+      "schema": "expense",
+      "description": "Academy expenses and bills"
+    },
+    "/installments/{installmentId}": {
+      "schema": "installment",
+      "description": "Product sale installments"
+    }
+  }
+}

@@ -48,6 +48,5 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     path
   }
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  // In a real app, we might send this to Sentry or another logging service
-  return errInfo;
+  throw new Error(JSON.stringify(errInfo));
 }

@@ -192,6 +192,51 @@ export const useInstallments = (enabled: boolean) => {
   return installments;
 };
 
+export const useEvaluations = (enabled: boolean) => {
+  const [evaluations, setEvaluations] = useState<any[]>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    const q = query(collection(db, 'evaluations'), orderBy('date', 'desc'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setEvaluations(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'evaluations');
+    });
+    return () => unsubscribe();
+  }, [enabled]);
+  return evaluations;
+};
+
+export const useGraduations = (enabled: boolean) => {
+  const [graduations, setGraduations] = useState<any[]>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    const q = query(collection(db, 'graduations'), orderBy('date', 'desc'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setGraduations(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'graduations');
+    });
+    return () => unsubscribe();
+  }, [enabled]);
+  return graduations;
+};
+
+export const useRoles = (enabled: boolean) => {
+  const [roles, setRoles] = useState<any[]>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    const q = query(collection(db, 'roles'), orderBy('name'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setRoles(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'roles');
+    });
+    return () => unsubscribe();
+  }, [enabled]);
+  return roles;
+};
+
 export const useSettings = (enabled: boolean) => {
   const [settings, setSettings] = useState<any>({});
   useEffect(() => {

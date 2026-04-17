@@ -11,7 +11,8 @@ import {
   Shield,
   Palette,
   Layout as LayoutIcon,
-  FileJson
+  FileJson,
+  Package
 } from 'lucide-react';
 import { collection, doc, addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -32,11 +33,14 @@ interface SettingsViewProps {
     expenses: any[];
     products: any[];
     checkIns: any[];
+    evaluations: any[];
   };
 }
 
 export const SettingsView = ({ belts, settings, allData }: SettingsViewProps) => {
   const [activeSubTab, setActiveSubTab] = useState('belts');
+  
+  // Belts State
   const [isBeltModalOpen, setIsBeltModalOpen] = useState(false);
   const [beltForm, setBeltForm] = useState({ 
     name: '', 
@@ -46,6 +50,7 @@ export const SettingsView = ({ belts, settings, allData }: SettingsViewProps) =>
     order: 0 
   });
   const [editingBelt, setEditingBelt] = useState<any>(null);
+
   const [logoPreview, setLogoPreview] = useState<string | null>(settings?.logoUrl || null);
   const [isSavingLogo, setIsSavingLogo] = useState(false);
   const { isAdmin } = useAuth();

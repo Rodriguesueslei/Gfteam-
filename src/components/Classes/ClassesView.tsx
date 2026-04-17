@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Plus, Clock, Calendar as CalendarIcon, X, Edit2, Trash2, Users, Check, ChevronLeft, ChevronRight, Grid, List } from 'lucide-react';
+import { Plus, Clock, Calendar as CalendarIcon, X, Edit2, Trash2, Users, Check, ChevronLeft, ChevronRight, Grid, List, Eye, UserX, UserCheck } from 'lucide-react';
 import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { addDoc, collection, doc, updateDoc, deleteDoc, writeBatch, Timestamp } from 'firebase/firestore';
@@ -14,11 +14,14 @@ import 'react-calendar/dist/Calendar.css';
 interface ClassesViewProps {
   classes: any[];
   instructors: any[];
+  students: any[];
 }
 
-export const ClassesView = ({ classes, instructors }: ClassesViewProps) => {
+export const ClassesView = ({ classes, instructors, students }: ClassesViewProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<any>(null);
+  const [isPresenceModalOpen, setIsPresenceModalOpen] = useState(false);
+  const [selectedClassForPresence, setSelectedClassForPresence] = useState<any>(null);
   const [showUpdateScopeModal, setShowUpdateScopeModal] = useState(false);
   const [showDeleteScopeModal, setShowDeleteScopeModal] = useState(false);
   const [pendingUpdateData, setPendingUpdateData] = useState<any>(null);
@@ -407,49 +410,69 @@ export const ClassesView = ({ classes, instructors }: ClassesViewProps) => {
                   </div>
 
                   <div className="flex items-center justify-between pt-6 border-t border-gray-50">
-                    <div className="flex items-center gap-2 text-gray-400">
-                      <Users className="w-4 h-4" />
-                      <span className="text-xs font-bold">{cls.capacity} Vagas</span>
-                    </div>
-                    {isAdmin && (
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => { 
-                            setEditingClass(cls); 
-                            setFormData({
-                              title: cls.title || cls.name || '',
-                              instructorIds: cls.instructorIds || [],
-                              categories: cls.categories || [],
-                              daysOfWeek: cls.daysOfWeek || (cls.dayOfWeek ? [cls.dayOfWeek] : []),
-                              startTime: cls.startTime || '',
-                              endTime: cls.endTime || '',
-                              capacity: cls.capacity || 20,
-                              isRecurring: cls.isRecurring || false,
-                              recurrenceWeeks: 4
-                            }); 
-                            setIsModalOpen(true); 
-                          }} 
-                          className="p-2 text-gray-400 hover:text-black transition-colors"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (cls.recurrenceId) {
-                              setClassToDelete(cls);
-                              setShowDeleteScopeModal(true);
-                            } else if (confirm("Deseja excluir esta aula?")) {
-                              setClassToDelete(cls);
-                              performDelete('single');
-                            }
-                          }}
-                          className="p-2 text-gray-400 hover:text-rose-500 transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2 text-gray-900">
+                        <UserCheck className="w-4 h-4 text-emerald-500" />
+                        <span className="text-xs font-black">{(cls.presence || []).length} Presentes</span>
                       </div>
-                    )}
+                      <div className="flex items-center gap-2 text-gray-400">
+                        <Users className="w-4 h-4" />
+                        <span className="text-[10px] font-bold">{cls.capacity} Vagas Totais</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => {
+                          setSelectedClassForPresence(cls);
+                          setIsPresenceModalOpen(true);
+                        }}
+                        className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl transition-all group/btn"
+                        title="Ver lista de presença"
+                      >
+                        <Eye className="w-5 h-5 group-hover/btn:scale-110 transition-transform" />
+                      </button>
+                      
+                      {isAdmin && (
+                        <div className="flex items-center gap-2">
+                          <button 
+                            onClick={() => { 
+                              setEditingClass(cls); 
+                              setFormData({
+                                title: cls.title || cls.name || '',
+                                instructorIds: cls.instructorIds || [],
+                                categories: cls.categories || [],
+                                daysOfWeek: cls.daysOfWeek || (cls.dayOfWeek ? [cls.dayOfWeek] : []),
+                                startTime: cls.startTime || '',
+                                endTime: cls.endTime || '',
+                                capacity: cls.capacity || 20,
+                                isRecurring: cls.isRecurring || false,
+                                recurrenceWeeks: 4
+                              }); 
+                              setIsModalOpen(true); 
+                            }} 
+                            className="p-2 text-gray-400 hover:text-black transition-colors"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (cls.recurrenceId) {
+                                setClassToDelete(cls);
+                                setShowDeleteScopeModal(true);
+                              } else if (confirm("Deseja excluir esta aula?")) {
+                                setClassToDelete(cls);
+                                performDelete('single');
+                              }
+                            }}
+                            className="p-2 text-gray-400 hover:text-rose-500 transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -465,6 +488,105 @@ export const ClassesView = ({ classes, instructors }: ClassesViewProps) => {
       </div>
 
       <AnimatePresence>
+        {isPresenceModalOpen && selectedClassForPresence && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              onClick={() => setIsPresenceModalOpen(false)} 
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm" 
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }} 
+              animate={{ opacity: 1, scale: 1 }} 
+              exit={{ opacity: 0, scale: 0.95 }} 
+              className="relative w-full max-w-2xl bg-white rounded-[40px] shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              <div className="p-8 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+                <div>
+                  <h2 className="text-2xl font-black text-black italic uppercase tracking-tighter">Lista de Presença</h2>
+                  <p className="text-sm text-gray-500 font-medium">{selectedClassForPresence.title} • {selectedClassForPresence.dayOfWeek}</p>
+                </div>
+                <button 
+                  onClick={() => setIsPresenceModalOpen(false)}
+                  className="p-3 bg-white rounded-2xl shadow-sm text-gray-400 hover:text-black transition-colors"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-8 space-y-8">
+                {/* Present Students */}
+                <section>
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="p-2 bg-emerald-100 rounded-lg">
+                      <UserCheck className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <h3 className="text-sm font-black text-gray-900 uppercase italic tracking-tighter">Presentes ({(selectedClassForPresence.presence || []).length})</h3>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {(selectedClassForPresence.presence || []).length > 0 ? (
+                      selectedClassForPresence.presence.map((studentId: string) => {
+                        const student = students.find(s => s.id === studentId);
+                        return (
+                          <div key={studentId} className="flex items-center p-3 bg-emerald-50/50 border border-emerald-100/50 rounded-2xl">
+                            <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-700 font-bold text-xs mr-3">
+                              {student?.name?.charAt(0) || '?'}
+                            </div>
+                            <span className="text-sm font-bold text-gray-900">{student?.name || 'Aluno não encontrado'}</span>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-xs text-gray-400 italic">Nenhum aluno marcou presença ainda.</p>
+                    )}
+                  </div>
+                </section>
+
+                {/* Absent Students (Registered but not present) */}
+                <section>
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="p-2 bg-rose-100 rounded-lg">
+                      <UserX className="w-4 h-4 text-rose-600" />
+                    </div>
+                    <h3 className="text-sm font-black text-gray-900 uppercase italic tracking-tighter">
+                      Ausentes ({(selectedClassForPresence.attendees || []).filter((id: string) => !(selectedClassForPresence.presence || []).includes(id)).length})
+                    </h3>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {(() => {
+                      const absentIds = (selectedClassForPresence.attendees || []).filter((id: string) => !(selectedClassForPresence.presence || []).includes(id));
+                      return absentIds.length > 0 ? (
+                        absentIds.map((studentId: string) => {
+                          const student = students.find(s => s.id === studentId);
+                          return (
+                            <div key={studentId} className="flex items-center p-3 bg-gray-50 border border-gray-100 rounded-2xl opacity-60">
+                              <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-gray-500 font-bold text-xs mr-3">
+                                {student?.name?.charAt(0) || '?'}
+                              </div>
+                              <span className="text-sm font-bold text-gray-900">{student?.name || 'Aluno não encontrado'}</span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <p className="text-xs text-gray-400 italic">Todos os alunos agendados estão presentes.</p>
+                      );
+                    })()}
+                  </div>
+                </section>
+              </div>
+
+              <div className="p-8 border-t border-gray-100 bg-gray-50/30">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-gray-400 font-bold uppercase">Total Agendados</span>
+                  <span className="text-gray-900 font-black">{(selectedClassForPresence.attendees || []).length} Alunos</span>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {showDeleteScopeModal && (
           <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
             <motion.div 

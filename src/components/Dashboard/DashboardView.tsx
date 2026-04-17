@@ -10,7 +10,7 @@ import {
   TrendingUp,
   BarChart3
 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, startOfWeek, endOfWeek, isWithinInterval, parseISO, setYear } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { 
   BarChart, 
@@ -38,7 +38,7 @@ interface DashboardViewProps {
 }
 
 export const DashboardView = ({ belts, students, payments, classes, expenses, products, checkIns }: DashboardViewProps) => {
-  const { isAdmin, isReceptionist } = useAuth();
+  const { isAdmin, permissions } = useAuth();
   const [stats, setStats] = useState({
     totalStudents: 0,
     activeStudents: 0,
@@ -84,11 +84,31 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
       pendingPayments: pending
     });
 
-    // Birthdays
-    const todayStr = format(now, 'MM-dd');
+    // Birthdays of the week
+    const start = startOfWeek(now, { weekStartsOn: 0 });
+    const end = endOfWeek(now, { weekStartsOn: 0 });
+
     const bdays = nonArchivedStudents.filter((s: any) => {
       if (!s.birthDate) return false;
-      return s.birthDate.substring(5) === todayStr;
+      try {
+        const birthDate = parseISO(s.birthDate);
+        const thisYearBday = setYear(birthDate, now.getFullYear());
+        const nextYearBday = setYear(birthDate, now.getFullYear() + 1);
+        const lastYearBday = setYear(birthDate, now.getFullYear() - 1);
+
+        return isWithinInterval(thisYearBday, { start, end }) ||
+               isWithinInterval(nextYearBday, { start, end }) ||
+               isWithinInterval(lastYearBday, { start, end });
+      } catch (e) {
+        return false;
+      }
+    }).sort((a, b) => {
+      const dayA = parseInt(a.birthDate.split('-')[2]);
+      const monthA = parseInt(a.birthDate.split('-')[1]);
+      const dayB = parseInt(b.birthDate.split('-')[2]);
+      const monthB = parseInt(b.birthDate.split('-')[1]);
+      if (monthA !== monthB) return monthA - monthB;
+      return dayA - dayB;
     });
     setBirthdays(bdays);
 
@@ -138,7 +158,7 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
         <StatCard title="Total de Alunos" value={stats.totalStudents} icon={Users} color="bg-blue-600 text-white" />
         <StatCard title="Alunos Ativos" value={stats.activeStudents} icon={CheckCircle2} color="bg-emerald-600 text-white" />
-        {isAdmin && (
+        {(isAdmin || permissions.finance) && (
           <>
             <StatCard title="Lucro Mensal" value={formatCurrency(stats.monthlyRevenue - stats.monthlyExpenses)} icon={CreditCard} color={stats.monthlyRevenue - stats.monthlyExpenses >= 0 ? "bg-indigo-600 text-white" : "bg-rose-600 text-white"} />
             <StatCard title="Pendentes" value={stats.pendingPayments} icon={AlertCircle} color="bg-rose-600 text-white" />
@@ -248,29 +268,50 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
               <div className="p-2 bg-rose-100 rounded-lg">
                 <TrendingUp className="w-4 h-4 text-rose-600" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Aniversariantes</h3>
+              <h3 className="text-lg font-bold text-gray-900">Aniversariantes da Semana</h3>
             </div>
             <div className="space-y-4">
               {birthdays.length > 0 ? (
-                birthdays.map(student => (
-                  <div key={student.id} className="flex items-center gap-3 p-3 bg-rose-50/50 rounded-xl border border-rose-100/50">
-                    <div className="w-10 h-10 rounded-full bg-rose-200 flex items-center justify-center text-rose-700 font-bold">
-                      {student.name.charAt(0)}
+                birthdays.map(student => {
+                  const bdayDate = parseISO(student.birthDate);
+                  const isToday = format(new Date(), 'MM-dd') === format(bdayDate, 'MM-dd');
+                  
+                  return (
+                    <div key={student.id} className={cn(
+                      "flex items-center gap-3 p-3 rounded-xl border transition-all",
+                      isToday ? "bg-rose-50 border-rose-200 scale-[1.02] shadow-sm" : "bg-gray-50/50 border-gray-100"
+                    )}>
+                      <div className={cn(
+                        "w-10 h-10 rounded-full flex items-center justify-center font-bold",
+                        isToday ? "bg-rose-500 text-white" : "bg-gray-200 text-gray-600"
+                      )}>
+                        {student.name.charAt(0)}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-bold text-gray-900">{student.name}</p>
+                          <p className="text-[10px] font-bold text-gray-400 uppercase">
+                            {format(bdayDate, "dd/MM")}
+                          </p>
+                        </div>
+                        <p className={cn(
+                          "text-[10px] font-bold uppercase tracking-wider",
+                          isToday ? "text-rose-600" : "text-gray-400"
+                        )}>
+                          {isToday ? "Parabéns! 🎂🎉" : "Parabéns antecipado!"}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-bold text-gray-900">{student.name}</p>
-                      <p className="text-[10px] text-rose-600 font-bold uppercase tracking-wider">Parabéns! 🎂</p>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
-                <p className="text-sm text-gray-400 text-center py-4 italic">Nenhum aniversariante hoje.</p>
+                <p className="text-sm text-gray-400 text-center py-4 italic">Nenhum aniversariante nesta semana.</p>
               )}
             </div>
           </div>
 
           {/* Low Stock Alerts */}
-          {(isAdmin || isReceptionist) && (
+          {(isAdmin || permissions.inventory) && (
             <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-3xl">
               <div className="flex items-center gap-2 mb-6">
                 <div className="p-2 bg-amber-100 rounded-lg">

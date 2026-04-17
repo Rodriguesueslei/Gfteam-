@@ -10,7 +10,8 @@ import {
   TrendingUp,
   TrendingDown,
   PieChart as PieChartIcon,
-  X
+  X,
+  MessageCircle
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { 
@@ -179,6 +180,19 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
     } catch (err) {
       toast.error("Erro ao receber parcela.");
     }
+  };
+
+  const handleWhatsAppCollection = (inst: any) => {
+    const student = students.find(s => s.id === inst.studentId);
+    if (!student?.phone) {
+      toast.error("Aluno sem telefone cadastrado.");
+      return;
+    }
+
+    const message = `Olá ${student.name}, tudo bem? Passando para lembrar da sua parcela de ${inst.productName} (${inst.installmentNumber}/${inst.totalInstallments}) no valor de ${formatCurrency(inst.amount)}, com vencimento em ${format(new Date(inst.dueDate.seconds * 1000), 'dd/MM/yyyy')}. Segue nossa chave PIX para pagamento: [SUA CHAVE PIX AQUI]. Oss!`;
+    const encodedMessage = encodeURIComponent(message);
+    const phone = student.phone.replace(/\D/g, '');
+    window.open(`https://wa.me/55${phone}?text=${encodedMessage}`, '_blank');
   };
 
   const filteredInstallments = (installments || []).filter(inst => {
@@ -499,15 +513,26 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
                     </span>
                   </td>
                   <td className="px-8 py-5">
-                    {inst.status === 'pending' && (
-                      <button 
-                        onClick={() => handleReceiveInstallment(inst)}
-                        className="p-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-all shadow-md"
-                        title="Receber Parcela"
-                      >
-                        <DollarSign className="w-4 h-4" />
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {inst.status === 'pending' && (
+                        <>
+                          <button 
+                            onClick={() => handleWhatsAppCollection(inst)}
+                            className="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition-all shadow-md"
+                            title="Cobrar via WhatsApp"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => handleReceiveInstallment(inst)}
+                            className="p-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-all shadow-md"
+                            title="Receber Parcela"
+                          >
+                            <DollarSign className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

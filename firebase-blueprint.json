@@ -181,6 +181,44 @@
         "paidAt": { "type": "string", "format": "date-time", "description": "When it was paid" }
       },
       "required": ["saleId", "amount", "installmentNumber", "totalInstallments", "dueDate", "status"]
+    },
+    "role": {
+      "title": "Role",
+      "description": "A user role with specific permissions",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the role" },
+        "permissions": {
+          "type": "object",
+          "description": "Module-based permissions",
+          "properties": {
+            "dashboard": { "type": "boolean" },
+            "students": { "type": "boolean" },
+            "finance": { "type": "boolean" },
+            "inventory": { "type": "boolean" },
+            "classes": { "type": "boolean" },
+            "settings": { "type": "boolean" },
+            "users": { "type": "boolean" },
+            "checkin": { "type": "boolean" },
+            "reports": { "type": "boolean" }
+          }
+        }
+      },
+      "required": ["name", "permissions"]
+    },
+    "evaluation": {
+      "title": "Evaluation",
+      "description": "Technical evaluation or note for a student",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "description": "ID of the student" },
+        "professorId": { "type": "string", "description": "ID of the professor" },
+        "professorName": { "type": "string", "description": "Name of the professor" },
+        "note": { "type": "string", "description": "Technical or behavioral note" },
+        "date": { "type": "string", "format": "date-time", "description": "Date of evaluation" },
+        "type": { "type": "string", "enum": ["Technical", "Behavioral", "General"], "description": "Type of note" }
+      },
+      "required": ["studentId", "note", "date"]
     }
   },
   "firestore": {
@@ -231,6 +269,14 @@
     "/installments/{installmentId}": {
       "schema": "installment",
       "description": "Product sale installments"
+    },
+    "/evaluations/{evaluationId}": {
+      "schema": "evaluation",
+      "description": "Technical evaluations and notes for students"
+    },
+    "/roles/{roleId}": {
+      "schema": "role",
+      "description": "User roles and permissions definitions"
     }
   }
 }

@@ -11,7 +11,8 @@ import {
   Calendar,
   UserCheck,
   Scan,
-  DollarSign
+  DollarSign,
+  Package
 } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 import { useAuth, AuthProvider } from './contexts/AuthContext';
@@ -29,7 +30,9 @@ import {
   useExpenses, 
   useSettings,
   useCheckIns,
-  useInstallments
+  useInstallments,
+  useEvaluations,
+  useGraduations
 } from './hooks/useFirebaseData';
 import { cn } from './utils/formatters';
 import { Logo } from './components/ui/Logo';
@@ -41,6 +44,7 @@ import { SettingsView } from './components/Settings/SettingsView';
 import { InstructorsView } from './components/Instructors/InstructorsView';
 import { ClassesView } from './components/Classes/ClassesView';
 import { MensalidadesView } from './components/Financeiro/MensalidadesView';
+import { PlansView } from './components/Financeiro/PlansView';
 import { UsersView } from './components/Users/UsersView';
 import { LoadingOverlay } from './components/ui/LoadingOverlay';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
@@ -48,7 +52,7 @@ import { CheckInTabletView } from './components/CheckIn/CheckInTabletView';
 import { StudentPortalView } from './components/StudentPortal/StudentPortalView';
 
 const AppContent = () => {
-  const { user, loading: authLoading, role, isApproved, isAdmin, isReceptionist, isCheckInTablet } = useAuth();
+  const { user, loading: authLoading, role, permissions, isApproved, isAdmin, isReceptionist, isCheckInTablet } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   
@@ -61,11 +65,13 @@ const AppContent = () => {
   const plans = usePlans(!!user);
   const products = useProducts(!!user);
   const sales = useSales(!!user);
-  const users = useUsers(isAdmin);
-  const expenses = useExpenses(isAdmin);
+  const users = useUsers(isAdmin || permissions.users);
+  const expenses = useExpenses(isAdmin || permissions.finance);
   const settings = useSettings(!!user);
   const checkIns = useCheckIns(!!user);
-  const installments = useInstallments(isAdmin);
+  const installments = useInstallments(isAdmin || permissions.finance);
+  const evaluations = useEvaluations(!!user);
+  const graduations = useGraduations(!!user);
 
   const [dataLoaded, setDataLoaded] = useState(false);
 
@@ -147,9 +153,31 @@ const AppContent = () => {
 
   if (role === 'user') {
     return (
-      <div className="min-h-screen bg-[#fafafa] p-4 lg:p-10 max-w-5xl mx-auto">
-        <Toaster position="top-right" />
-        <StudentPortalView students={students} payments={payments} checkIns={checkIns} belts={belts} settings={settings} />
+      <div className="min-h-screen bg-[#fafafa] relative">
+        <div className="p-4 lg:p-10 max-w-5xl mx-auto">
+          <Toaster position="top-right" />
+          <StudentPortalView 
+            students={students} 
+            payments={payments} 
+            checkIns={checkIns} 
+            belts={belts} 
+            settings={settings} 
+            evaluations={evaluations}
+            graduations={graduations}
+          />
+        </div>
+        
+        {/* Global Fallback Logout for Students */}
+        <div className="fixed bottom-6 right-6 lg:bottom-10 lg:right-10 z-[100]">
+          <button 
+            onClick={logout}
+            className="p-4 bg-white text-rose-500 rounded-2xl shadow-2xl border border-gray-100 flex items-center gap-2 font-black italic uppercase tracking-tighter hover:bg-rose-50 transition-all active:scale-95"
+            title="Sair do Sistema"
+          >
+            <LogOut className="w-5 h-5" />
+            <span className="hidden sm:inline">Sair</span>
+          </button>
+        </div>
       </div>
     );
   }
@@ -159,13 +187,15 @@ const AppContent = () => {
       case 'dashboard':
         return <DashboardView belts={belts} students={students} payments={payments} classes={classes} expenses={expenses} products={products} checkIns={checkIns} />;
       case 'students':
-        return <StudentsView belts={belts} students={students} instructors={instructors} plans={plans} classes={classes} />;
+        return <StudentsView belts={belts} students={students} instructors={instructors} plans={plans} classes={classes} evaluations={evaluations} graduations={graduations} />;
       case 'instructors':
         return <InstructorsView instructors={instructors} />;
       case 'classes':
-        return <ClassesView classes={classes} instructors={instructors} />;
+        return <ClassesView classes={classes} instructors={instructors} students={students} />;
       case 'mensalidades':
         return <MensalidadesView students={students} payments={payments} plans={plans} />;
+      case 'plans':
+        return <PlansView plans={plans} />;
       case 'checkin':
         return <CheckInTabletView students={students} classes={classes} settings={settings} />;
       case 'users':
@@ -175,23 +205,36 @@ const AppContent = () => {
       case 'inventory':
         return <InventoryView products={products} sales={sales} students={students} />;
       case 'settings':
-        return <SettingsView belts={belts} settings={settings} allData={{ students, payments, sales, expenses, products, checkIns }} />;
+        return <SettingsView 
+          belts={belts} 
+          settings={settings} 
+          allData={{ 
+            students, 
+            payments, 
+            sales, 
+            expenses, 
+            products, 
+            checkIns, 
+            evaluations 
+          }} 
+        />;
       default:
         return <DashboardView belts={belts} students={students} payments={payments} classes={classes} expenses={expenses} products={products} checkIns={checkIns} />;
     }
   };
 
   const menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: TrendingUp },
-    { id: 'students', label: 'Alunos', icon: Users },
-    { id: 'instructors', label: 'Professores', icon: UserCheck },
-    { id: 'classes', label: 'Aulas', icon: Calendar },
-    { id: 'mensalidades', label: 'Mensalidades', icon: DollarSign },
-    { id: 'checkin', label: 'Check-in', icon: Scan },
-    { id: 'users', label: 'Usuários', icon: ShieldAlert, adminOnly: true },
-    { id: 'finance', label: 'Financeiro', icon: CreditCard, adminOnly: true },
-    { id: 'inventory', label: 'Estoque', icon: ShoppingCart, adminOnly: true },
-    { id: 'settings', label: 'Configurações', icon: Settings, adminOnly: true },
+    { id: 'dashboard', label: 'Dashboard', icon: TrendingUp, permission: 'dashboard' },
+    { id: 'students', label: 'Alunos', icon: Users, permission: 'students' },
+    { id: 'instructors', label: 'Professores', icon: UserCheck, permission: 'instructors' },
+    { id: 'classes', label: 'Aulas', icon: Calendar, permission: 'classes' },
+    { id: 'plans', label: 'Planos', icon: Package, permission: 'finance' },
+    { id: 'mensalidades', label: 'Mensalidades', icon: DollarSign, permission: 'mensalidades' },
+    { id: 'checkin', label: 'Check-in', icon: Scan, permission: 'checkin' },
+    { id: 'users', label: 'Acessos', icon: ShieldAlert, permission: 'users' },
+    { id: 'finance', label: 'Financeiro', icon: CreditCard, permission: 'finance' },
+    { id: 'inventory', label: 'Estoque', icon: ShoppingCart, permission: 'inventory' },
+    { id: 'settings', label: 'Configurações', icon: Settings, permission: 'settings' },
   ];
 
   return (
@@ -217,7 +260,13 @@ const AppContent = () => {
           
           <nav className="flex-1 space-y-1">
             {menuItems.map(item => {
-              if (item.adminOnly && !isAdmin && !isReceptionist) return null;
+              // Priority for admin
+              if (isAdmin) {
+                // Admin sees everything
+              } else if (item.permission && !permissions[item.permission]) {
+                return null;
+              }
+              
               return (
                 <button
                   key={item.id}

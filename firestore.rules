@@ -116,6 +116,15 @@ service cloud.firestore {
              (!('paidAt' in data) || data.paidAt is timestamp);
     }
 
+    function isValidEvaluation(data) {
+      return data.studentId is string &&
+             data.note is string && data.note.size() > 0 && data.note.size() < 2000 &&
+             data.date is timestamp &&
+             (!('professorId' in data) || data.professorId is string) &&
+             (!('professorName' in data) || data.professorName is string) &&
+             (!('type' in data) || data.type in ['Technical', 'Behavioral', 'General']);
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -215,6 +224,17 @@ service cloud.firestore {
       allow read: if isAdmin() || isReceptionist();
       allow create, update: if (isAdmin() || isReceptionist()) && isValidInstallment(request.resource.data);
       allow delete: if isAdmin();
+    }
+
+    match /evaluations/{evaluationId} {
+      allow read: if isAuthenticated();
+      allow create, update: if (isAdmin() || isProfessor()) && isValidEvaluation(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /roles/{roleId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
     }
   }
 }

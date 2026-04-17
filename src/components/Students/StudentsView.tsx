@@ -8,6 +8,7 @@ import {
   Trash2, 
   Archive, 
   RotateCcw, 
+  Award,
   History as HistoryIcon, 
   TrendingUp,
   Scan,
@@ -16,8 +17,16 @@ import {
   Phone,
   Mail,
   Calendar as CalendarIcon,
-  MapPin
+  MapPin,
+  ChevronRight,
+  History,
+  Camera,
+  FileText,
+  MessageSquare,
+  User
 } from 'lucide-react';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { Timestamp, addDoc, collection, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -42,17 +51,32 @@ interface StudentsViewProps {
   instructors: any[];
   plans: any[];
   classes: any[];
+  evaluations: any[];
+  graduations: any[];
 }
 
-export const StudentsView = ({ belts, students, instructors, plans, classes }: StudentsViewProps) => {
+export const StudentsView = ({ belts, students, instructors, plans, classes, evaluations, graduations }: StudentsViewProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<any>(null);
+  const [selectedStudent, setSelectedStudent] = useState<any>(null);
+  const [activeSubTab, setActiveSubTab] = useState('info');
+  const [isEvaluationModalOpen, setIsEvaluationModalOpen] = useState(false);
+  const [isGraduationModalOpen, setIsGraduationModalOpen] = useState(false);
+  const [graduationData, setGraduationData] = useState({
+    belt: '',
+    stripes: 0,
+    notes: '',
+    date: format(new Date(), 'yyyy-MM-dd')
+  });
+  const [evaluationNote, setEvaluationNote] = useState("");
+  const [evaluationType, setEvaluationType] = useState('Technical');
   const [error, setError] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [isFaceModalOpen, setIsFaceModalOpen] = useState(false);
   const videoRef = React.useRef<HTMLVideoElement>(null);
-  const { isAdmin, isReceptionist } = useAuth();
+  const { isAdmin, isReceptionist, user } = useAuth();
   
   const [formData, setFormData] = useState({
     name: '',
@@ -116,6 +140,48 @@ export const StudentsView = ({ belts, students, instructors, plans, classes }: S
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, editingStudent ? `students/${editingStudent.id}` : 'students');
       toast.error("Erro ao salvar aluno.");
+    }
+  };
+
+  const studentGraduations = useMemo(() => {
+    if (!selectedStudent) return [];
+    return graduations.filter(g => g.studentId === selectedStudent.id);
+  }, [graduations, selectedStudent]);
+
+  const handleGraduation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedStudent) return;
+    
+    try {
+      // Add record to graduation history
+      await addDoc(collection(db, 'graduations'), {
+        studentId: selectedStudent.id,
+        belt: graduationData.belt,
+        stripes: graduationData.stripes,
+        notes: graduationData.notes,
+        date: Timestamp.fromDate(new Date(graduationData.date)),
+        instructorName: user?.displayName || 'Admin'
+      });
+
+      // Update student current rank
+      await updateDoc(doc(db, 'students', selectedStudent.id), {
+        belt: graduationData.belt,
+        stripes: graduationData.stripes
+      });
+
+      toast.success("Graduação registrada com sucesso!");
+      setIsGraduationModalOpen(false);
+      
+      // Update local state if needed
+      setSelectedStudent({
+        ...selectedStudent,
+        belt: graduationData.belt,
+        stripes: graduationData.stripes
+      });
+
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'graduations');
+      toast.error("Erro ao registrar graduação.");
     }
   };
 
@@ -189,6 +255,32 @@ export const StudentsView = ({ belts, students, instructors, plans, classes }: S
     const matchesArchived = showArchived ? s.status === 'Archived' : s.status !== 'Archived';
     return matchesSearch && matchesArchived;
   });
+
+  const handleSaveEvaluation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedStudent || !evaluationNote) return;
+
+    try {
+      await addDoc(collection(db, 'evaluations'), {
+        studentId: selectedStudent.id,
+        professorId: user?.uid || '',
+        professorName: user?.displayName || 'Professor',
+        note: evaluationNote,
+        type: evaluationType,
+        date: Timestamp.now()
+      });
+      toast.success("Avaliação salva com sucesso!");
+      setEvaluationNote("");
+      setIsEvaluationModalOpen(false);
+    } catch (err) {
+      toast.error("Erro ao salvar avaliação.");
+    }
+  };
+
+  const studentEvaluations = useMemo(() => {
+    if (!selectedStudent) return [];
+    return evaluations.filter(e => e.studentId === selectedStudent.id);
+  }, [selectedStudent, evaluations]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -294,13 +386,19 @@ export const StudentsView = ({ belts, students, instructors, plans, classes }: S
               </div>
 
               <div className="flex items-center gap-2 pt-6 border-t border-gray-50">
+                <button 
+                  onClick={() => { setSelectedStudent(student); setActiveSubTab('info'); }}
+                  className="flex-1 py-2 bg-black text-white text-xs font-bold rounded-xl hover:bg-gray-800 transition-all"
+                >
+                  Detalhes
+                </button>
                 {(isAdmin || isReceptionist) && (
                   <>
                     <button 
                       onClick={() => { setEditingStudent(student); setFormData(student); setIsModalOpen(true); }}
-                      className="flex-1 py-2 bg-gray-50 text-gray-600 text-xs font-bold rounded-xl hover:bg-gray-100 transition-all"
+                      className="p-2 bg-gray-50 text-gray-400 hover:text-black rounded-xl transition-colors"
                     >
-                      Editar
+                      <Edit2 className="w-4 h-4" />
                     </button>
                     <button 
                       onClick={async () => {
@@ -319,6 +417,320 @@ export const StudentsView = ({ belts, students, instructors, plans, classes }: S
           ))}
         </div>
       </div>
+
+      {/* Modal de Detalhes do Aluno */}
+      <AnimatePresence>
+        {selectedStudent && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSelectedStudent(null)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-3xl bg-white rounded-[40px] shadow-2xl overflow-hidden">
+              <div className="p-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
+                <div className="flex items-center justify-between mb-8">
+                  <div className="flex items-center gap-4">
+                    <div className="w-20 h-20 rounded-[28px] bg-gray-100 flex items-center justify-center text-3xl font-black text-gray-400 overflow-hidden shadow-inner">
+                      {selectedStudent.facePhoto ? <img src={selectedStudent.facePhoto} className="w-full h-full object-cover" alt="" /> : selectedStudent.name.charAt(0)}
+                    </div>
+                    <div>
+                      <h2 className="text-3xl font-black text-black italic uppercase tracking-tighter leading-tight">{selectedStudent.name}</h2>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getBeltColor(selectedStudent.belt, belts) }} />
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{selectedStudent.belt} • {selectedStudent.stripes} Graus</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button onClick={() => setSelectedStudent(null)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <div className="flex gap-4 border-b border-gray-100 pb-4 mb-6">
+                  <button 
+                    onClick={() => setActiveSubTab('info')}
+                    className={cn(
+                      "px-4 py-2 rounded-xl font-bold text-sm transition-all",
+                      activeSubTab === 'info' ? "bg-black text-white" : "text-gray-400 hover:bg-gray-50"
+                    )}
+                  >
+                    Informações
+                  </button>
+                  <button 
+                    onClick={() => setActiveSubTab('evaluations')}
+                    className={cn(
+                      "px-4 py-2 rounded-xl font-bold text-sm transition-all",
+                      activeSubTab === 'evaluations' ? "bg-black text-white" : "text-gray-400 hover:bg-gray-50"
+                    )}
+                  >
+                    Avaliações Técnicas
+                  </button>
+                  <button 
+                    onClick={() => setActiveSubTab('graduations')}
+                    className={cn(
+                      "px-4 py-2 rounded-xl font-bold text-sm transition-all",
+                      activeSubTab === 'graduations' ? "bg-black text-white" : "text-gray-400 hover:bg-gray-50"
+                    )}
+                  >
+                    Graduações
+                  </button>
+                </div>
+
+                {activeSubTab === 'info' ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-6">
+                      <div>
+                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Graduação Atual</h4>
+                        <div className="p-6 bg-black rounded-3xl text-white flex items-center justify-between relative overflow-hidden group">
+                          <div className="relative z-10">
+                            <h5 className="text-2xl font-black italic uppercase tracking-tighter">{selectedStudent.belt}</h5>
+                            <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">{selectedStudent.stripes} Graus</p>
+                          </div>
+                          <div className="w-12 h-12 rounded-2xl bg-white/10 flex items-center justify-center border border-white/20 relative z-10 transition-transform group-hover:scale-110">
+                            <Award className="w-6 h-6 text-white" />
+                          </div>
+                          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-32 h-32 bg-white/5 rounded-full blur-3xl" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Dados de Contato</h4>
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-3 text-sm text-gray-600">
+                            <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center">
+                              <Mail className="w-4 h-4" />
+                            </div>
+                            {selectedStudent.email}
+                          </div>
+                          <div className="flex items-center gap-3 text-sm text-gray-600">
+                            <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center">
+                              <Phone className="w-4 h-4" />
+                            </div>
+                            {selectedStudent.phone}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Endereço</h4>
+                        <p className="text-sm text-gray-600">{selectedStudent.address || 'Não informado'}</p>
+                      </div>
+
+                      {selectedStudent.category === 'Kids' && (
+                        <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                          <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">Responsável</h4>
+                          <p className="text-sm font-bold text-blue-900">{selectedStudent.guardianName}</p>
+                          <p className="text-xs text-blue-700">{selectedStudent.guardianPhone}</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-6">
+                      <div>
+                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Plano e Pagamento</h4>
+                        <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                          <p className="text-sm font-bold text-gray-900">{plans.find(p => p.id === selectedStudent.planId)?.name || 'Sem plano'}</p>
+                          <p className="text-xs text-gray-500">Vencimento: {selectedStudent.nextPaymentDate ? format(new Date(selectedStudent.nextPaymentDate.seconds * 1000), 'dd/MM/yyyy') : 'N/A'}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => { setSelectedStudent(null); setEditingStudent(selectedStudent); setFormData(selectedStudent); setIsModalOpen(true); }}
+                          className="flex-1 py-3 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-all text-sm flex items-center justify-center gap-2"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                          Editar Cadastro
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : activeSubTab === 'evaluations' ? (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-lg font-bold text-gray-900">Histórico de Avaliações</h4>
+                      <button 
+                        onClick={() => setIsEvaluationModalOpen(true)}
+                        className="px-4 py-2 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-all text-xs flex items-center gap-2"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Nova Observação
+                      </button>
+                    </div>
+
+                    <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2">
+                      {studentEvaluations.length > 0 ? studentEvaluations.map(eval_ => (
+                        <div key={eval_.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 relative group">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className={cn(
+                              "px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest",
+                              eval_.type === 'Technical' ? "bg-blue-100 text-blue-600" : 
+                              eval_.type === 'Behavioral' ? "bg-purple-100 text-purple-600" : "bg-gray-200 text-gray-600"
+                            )}>
+                              {eval_.type}
+                            </span>
+                            <span className="text-[10px] text-gray-400 font-bold">
+                              {format(new Date(eval_.date.seconds * 1000), 'dd/MM/yyyy HH:mm')}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-700 leading-relaxed">{eval_.note}</p>
+                          <p className="mt-2 text-[10px] text-gray-400 font-bold italic">— Prof. {eval_.professorName}</p>
+                          
+                          {isAdmin && (
+                            <button 
+                              onClick={async () => {
+                                if (confirm("Excluir esta observação?")) {
+                                  await deleteDoc(doc(db, 'evaluations', eval_.id));
+                                  toast.success("Observação excluída.");
+                                }
+                              }}
+                              className="absolute top-4 right-4 p-1 text-gray-300 hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      )) : (
+                        <div className="text-center py-12 bg-gray-50 rounded-[32px] border border-dashed border-gray-200">
+                          <MessageSquare className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                          <p className="text-sm text-gray-400 italic">Nenhuma observação técnica registrada.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-6">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-lg font-bold text-gray-900">Linha do Tempo de Graduação</h4>
+                      <button 
+                        onClick={() => {
+                          setGraduationData({
+                            belt: selectedStudent.belt,
+                            stripes: selectedStudent.stripes,
+                            notes: '',
+                            date: format(new Date(), 'yyyy-MM-dd')
+                          });
+                          setIsGraduationModalOpen(true);
+                        }}
+                        className="px-4 py-2 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-all text-xs flex items-center gap-2"
+                      >
+                        <Award className="w-4 h-4" />
+                        Nova Graduação
+                      </button>
+                    </div>
+
+                    <div className="relative space-y-6 before:absolute before:inset-y-0 before:left-4 before:w-0.5 before:bg-gray-100 pb-4">
+                      {studentGraduations.length > 0 ? studentGraduations.map((grad, idx) => (
+                        <div key={grad.id} className="relative pl-12 group">
+                          <div className={cn(
+                            "absolute left-2.5 top-1.5 w-3 h-3 rounded-full border-2 border-white shadow-sm z-10 transition-transform group-hover:scale-125",
+                            idx === 0 ? "bg-black" : "bg-gray-300"
+                          )} />
+                          <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100 space-y-2 transition-all group-hover:bg-white group-hover:shadow-xl group-hover:shadow-black/5">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-black text-black uppercase italic tracking-tighter">{grad.belt}</span>
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">• {grad.stripes} Graus</span>
+                              </div>
+                              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                                {format(new Date(grad.date.seconds * 1000), 'dd MMM yyyy', { locale: ptBR })}
+                              </span>
+                            </div>
+                            {grad.notes && <p className="text-xs text-gray-600 italic leading-relaxed">"{grad.notes}"</p>}
+                            <p className="text-[9px] text-gray-400 font-bold uppercase tracking-tighter">— Prof. {grad.instructorName}</p>
+                          </div>
+                        </div>
+                      )) : (
+                        <div className="text-center py-12 bg-gray-50 rounded-[32px] border border-dashed border-gray-200 ml-12">
+                          <Award className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                          <p className="text-sm text-gray-400 italic">Nenhum histórico de graduação registrado.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal de Graduação */}
+      <AnimatePresence>
+        {isGraduationModalOpen && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsGraduationModalOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-md bg-white rounded-[40px] shadow-2xl overflow-hidden">
+              <div className="p-8">
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h2 className="text-2xl font-black text-black italic uppercase tracking-tighter">Registrar Graduação</h2>
+                    <p className="text-gray-500 font-medium">Atualize a faixa e o grau do aluno.</p>
+                  </div>
+                  <button onClick={() => setIsGraduationModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleGraduation} className="space-y-6">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Nova Faixa</label>
+                      <select 
+                        required
+                        className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-gray-200 outline-none transition-all text-sm font-bold"
+                        value={graduationData.belt}
+                        onChange={(e) => setGraduationData({ ...graduationData, belt: e.target.value })}
+                      >
+                        {belts.map((b: any) => (
+                          <option key={b.id} value={b.name}>{b.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Graus (0-4)</label>
+                      <input 
+                        required
+                        type="number"
+                        min="0"
+                        max="4"
+                        className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-gray-200 outline-none transition-all text-sm font-bold"
+                        value={graduationData.stripes}
+                        onChange={(e) => setGraduationData({ ...graduationData, stripes: parseInt(e.target.value) })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Data da Promoção</label>
+                    <input 
+                      required
+                      type="date"
+                      className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-gray-200 outline-none transition-all text-sm font-bold"
+                      value={graduationData.date}
+                      onChange={(e) => setGraduationData({ ...graduationData, date: e.target.value })}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Observações / Notas</label>
+                    <textarea 
+                      className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-gray-200 outline-none transition-all text-sm min-h-[100px] resize-none"
+                      placeholder="Ex: Ótima performance no exame..."
+                      value={graduationData.notes}
+                      onChange={(e) => setGraduationData({ ...graduationData, notes: e.target.value })}
+                    ></textarea>
+                  </div>
+
+                  <button 
+                    type="submit"
+                    className="w-full py-4 bg-black text-white font-bold rounded-2xl hover:bg-gray-800 transition-all shadow-lg active:scale-95"
+                  >
+                    Confirmar Promoção
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Modal de Aluno */}
       <AnimatePresence>
@@ -570,6 +982,43 @@ export const StudentsView = ({ belts, students, instructors, plans, classes }: S
                   </div>
                 </form>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Modal de Nova Avaliação */}
+      <AnimatePresence>
+        {isEvaluationModalOpen && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsEvaluationModalOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-md bg-white rounded-[40px] shadow-2xl overflow-hidden p-8">
+              <h2 className="text-2xl font-black text-black italic uppercase tracking-tighter mb-6">Nova Observação</h2>
+              <form onSubmit={handleSaveEvaluation} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-400 ml-2">Tipo de Nota</label>
+                  <select 
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none appearance-none"
+                    value={evaluationType}
+                    onChange={(e) => setEvaluationType(e.target.value)}
+                  >
+                    <option value="Technical">Técnica (Jiu-Jitsu)</option>
+                    <option value="Behavioral">Comportamental</option>
+                    <option value="General">Geral</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-400 ml-2">Observação</label>
+                  <textarea 
+                    required
+                    rows={4}
+                    placeholder="Descreva o desempenho ou comportamento do aluno..."
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none resize-none"
+                    value={evaluationNote}
+                    onChange={(e) => setEvaluationNote(e.target.value)}
+                  />
+                </div>
+                <button type="submit" className="w-full py-4 bg-black text-white font-black rounded-2xl hover:bg-gray-800 transition-all uppercase italic">Salvar Observação</button>
+              </form>
             </motion.div>
           </div>
         )}

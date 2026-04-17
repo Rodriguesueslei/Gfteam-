@@ -6,6 +6,7 @@ import {
   limit, 
   doc, 
   getDoc,
+  where,
   Timestamp
 } from 'firebase/firestore';
 import { useState, useEffect } from 'react';
@@ -27,18 +28,28 @@ export const useBelts = (enabled: boolean) => {
   return belts;
 };
 
-export const useStudents = (enabled: boolean) => {
+export const useStudents = (enabled: boolean, userEmail?: string | null, isAdmin?: boolean) => {
   const [students, setStudents] = useState<any[]>([]);
   useEffect(() => {
     if (!enabled) return;
-    const q = query(collection(db, 'students'), orderBy('name'));
+    
+    let q;
+    if (isAdmin) {
+      q = query(collection(db, 'students'), orderBy('name'));
+    } else if (userEmail) {
+      q = query(collection(db, 'students'), where('email', '==', userEmail));
+    } else {
+      // If we don't know if they are admin or what's their email, we don't fetch
+      return;
+    }
+
     const unsubscribe = onSnapshot(q, (snap) => {
       setStudents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'students');
     });
     return () => unsubscribe();
-  }, [enabled]);
+  }, [enabled, userEmail, isAdmin]);
   return students;
 };
 
@@ -57,18 +68,28 @@ export const useClasses = (enabled: boolean) => {
   return classes;
 };
 
-export const usePayments = (enabled: boolean) => {
+export const usePayments = (enabled: boolean, isAdmin?: boolean, studentIds?: string[]) => {
   const [payments, setPayments] = useState<any[]>([]);
   useEffect(() => {
     if (!enabled) return;
-    const q = query(collection(db, 'payments'), orderBy('date', 'desc'), limit(100));
+    
+    let q;
+    if (isAdmin) {
+      q = query(collection(db, 'payments'), orderBy('date', 'desc'), limit(100));
+    } else if (studentIds && studentIds.length > 0) {
+      // If studentIds list is large, we might need multiple queries, but usually it's 1-3
+      q = query(collection(db, 'payments'), where('studentId', 'in', studentIds), orderBy('date', 'desc'), limit(100));
+    } else {
+      return;
+    }
+
     const unsubscribe = onSnapshot(q, (snap) => {
       setPayments(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'payments');
     });
     return () => unsubscribe();
-  }, [enabled]);
+  }, [enabled, isAdmin, studentIds]);
   return payments;
 };
 
@@ -147,18 +168,27 @@ export const useUsers = (enabled: boolean) => {
   return users;
 };
 
-export const useCheckIns = (enabled: boolean) => {
+export const useCheckIns = (enabled: boolean, isAdmin?: boolean, studentIds?: string[]) => {
   const [checkIns, setCheckIns] = useState<any[]>([]);
   useEffect(() => {
     if (!enabled) return;
-    const q = query(collection(db, 'checkins'), orderBy('time', 'desc'), limit(1000));
+    
+    let q;
+    if (isAdmin) {
+      q = query(collection(db, 'checkins'), orderBy('time', 'desc'), limit(1000));
+    } else if (studentIds && studentIds.length > 0) {
+      q = query(collection(db, 'checkins'), where('studentId', 'in', studentIds), orderBy('time', 'desc'), limit(200));
+    } else {
+      return;
+    }
+
     const unsubscribe = onSnapshot(q, (snap) => {
       setCheckIns(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'checkins');
     });
     return () => unsubscribe();
-  }, [enabled]);
+  }, [enabled, isAdmin, studentIds]);
   return checkIns;
 };
 
@@ -192,33 +222,51 @@ export const useInstallments = (enabled: boolean) => {
   return installments;
 };
 
-export const useEvaluations = (enabled: boolean) => {
+export const useEvaluations = (enabled: boolean, isAdmin?: boolean, studentIds?: string[]) => {
   const [evaluations, setEvaluations] = useState<any[]>([]);
   useEffect(() => {
     if (!enabled) return;
-    const q = query(collection(db, 'evaluations'), orderBy('date', 'desc'));
+    
+    let q;
+    if (isAdmin) {
+      q = query(collection(db, 'evaluations'), orderBy('date', 'desc'));
+    } else if (studentIds && studentIds.length > 0) {
+      q = query(collection(db, 'evaluations'), where('studentId', 'in', studentIds), orderBy('date', 'desc'));
+    } else {
+      return;
+    }
+
     const unsubscribe = onSnapshot(q, (snap) => {
       setEvaluations(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'evaluations');
     });
     return () => unsubscribe();
-  }, [enabled]);
+  }, [enabled, isAdmin, studentIds]);
   return evaluations;
 };
 
-export const useGraduations = (enabled: boolean) => {
+export const useGraduations = (enabled: boolean, isAdmin?: boolean, studentIds?: string[]) => {
   const [graduations, setGraduations] = useState<any[]>([]);
   useEffect(() => {
     if (!enabled) return;
-    const q = query(collection(db, 'graduations'), orderBy('date', 'desc'));
+    
+    let q;
+    if (isAdmin) {
+      q = query(collection(db, 'graduations'), orderBy('date', 'desc'));
+    } else if (studentIds && studentIds.length > 0) {
+      q = query(collection(db, 'graduations'), where('studentId', 'in', studentIds), orderBy('date', 'desc'));
+    } else {
+      return;
+    }
+
     const unsubscribe = onSnapshot(q, (snap) => {
       setGraduations(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, 'graduations');
     });
     return () => unsubscribe();
-  }, [enabled]);
+  }, [enabled, isAdmin, studentIds]);
   return graduations;
 };
 
@@ -259,4 +307,30 @@ export const useSettings = (enabled: boolean) => {
     return () => unsubscribe();
   }, [enabled]);
   return settings;
+};
+
+export const usePrivateSettings = (isAdmin: boolean) => {
+  const [secrets, setSecrets] = useState<any>({});
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!isAdmin || !user) return;
+    
+    getDoc(doc(db, 'secret_settings', 'global')).then(doc => {
+      if (doc.exists()) setSecrets(doc.data());
+    }).catch(err => console.error("Initial secrets fetch error:", err));
+
+    const unsubscribe = onSnapshot(doc(db, 'secret_settings', 'global'), (doc) => {
+      if (doc.exists()) {
+        setSecrets(doc.data());
+      } else {
+        setSecrets({});
+      }
+    }, (error) => {
+      console.error("Error fetching secrets:", error);
+      setSecrets({});
+    });
+    return () => unsubscribe();
+  }, [isAdmin]);
+  return secrets;
 };

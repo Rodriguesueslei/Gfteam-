@@ -149,8 +149,16 @@
       "properties": {
         "logoUrl": { "type": "string", "description": "URL or Base64 of the academy logo" },
         "stripePublicKey": { "type": "string", "description": "Public key for Stripe integration" },
-        "stripeSecretKey": { "type": "string", "description": "Secret key for Stripe integration (stored as setting)" },
         "paymentProvider": { "type": "string", "enum": ["Stripe", "None"], "description": "Active payment provider" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      }
+    },
+    "secret_settings": {
+      "title": "Secret Settings",
+      "description": "Sensitive application settings accessible only by admins",
+      "type": "object",
+      "properties": {
+        "stripeSecretKey": { "type": "string", "description": "Secret key for Stripe integration" },
         "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
       }
     },
@@ -263,7 +271,11 @@
     },
     "/settings/{settingId}": {
       "schema": "settings",
-      "description": "Global application settings"
+      "description": "Global public settings"
+    },
+    "/secret_settings/{settingId}": {
+      "schema": "secret_settings",
+      "description": "Sensitive global settings"
     },
     "/expenses/{expenseId}": {
       "schema": "expense",

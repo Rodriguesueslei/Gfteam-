@@ -23,7 +23,8 @@ import {
   Camera,
   FileText,
   MessageSquare,
-  User
+  User,
+  Users
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -347,8 +348,8 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredStudents.map(student => (
-            <div key={student.id} className="group p-6 bg-white border border-gray-100 rounded-[32px] hover:shadow-xl transition-all relative overflow-hidden">
+          {filteredStudents.length > 0 ? filteredStudents.map(student => (
+            <div key={student.id} className="group p-6 bg-white dark:bg-gray-900 border border-gray-100 dark:border-white/5 rounded-[32px] hover:shadow-xl transition-all relative overflow-hidden">
               <div className="absolute top-0 right-0 p-4">
                 <div className={cn(
                   "px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest",
@@ -385,10 +386,10 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 pt-6 border-t border-gray-50">
+              <div className="flex items-center gap-2 pt-6 border-t border-gray-50 dark:border-white/5">
                 <button 
                   onClick={() => { setSelectedStudent(student); setActiveSubTab('info'); }}
-                  className="flex-1 py-2 bg-black text-white text-xs font-bold rounded-xl hover:bg-gray-800 transition-all"
+                  className="flex-1 py-2 bg-black dark:bg-white dark:text-black text-white text-xs font-bold rounded-xl hover:bg-gray-800 dark:hover:bg-gray-200 transition-all"
                 >
                   Detalhes
                 </button>
@@ -414,7 +415,17 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                 )}
               </div>
             </div>
-          ))}
+          )) : (
+            <div className="col-span-full py-20 flex flex-col items-center justify-center text-center bg-white dark:bg-gray-900 border border-dashed border-gray-200 dark:border-white/10 rounded-[40px]">
+              <div className="p-6 bg-gray-50 dark:bg-white/5 rounded-full mb-4">
+                <Users className="w-12 h-12 text-gray-300 dark:text-gray-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">Nenhum aluno encontrado</h3>
+              <p className="text-sm text-gray-400 max-w-xs mt-2 italic">
+                Não encontramos nenhum aluno para os filtros selecionados ou para o termo de busca.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 

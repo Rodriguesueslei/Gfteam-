@@ -12,7 +12,9 @@ import {
   UserCheck,
   Scan,
   DollarSign,
-  Package
+  Package,
+  Sun,
+  Moon
 } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 import { useAuth, AuthProvider } from './contexts/AuthContext';
@@ -32,7 +34,8 @@ import {
   useCheckIns,
   useInstallments,
   useEvaluations,
-  useGraduations
+  useGraduations,
+  usePrivateSettings
 } from './hooks/useFirebaseData';
 import { cn } from './utils/formatters';
 import { Logo } from './components/ui/Logo';
@@ -55,12 +58,27 @@ const AppContent = () => {
   const { user, loading: authLoading, role, permissions, isApproved, isAdmin, isReceptionist, isCheckInTablet } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('darkMode');
+      return saved === 'true' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('darkMode', isDarkMode.toString());
+  }, [isDarkMode]);
   
   // Data Hooks
   const belts = useBelts(!!user);
-  const students = useStudents(!!user);
+  const students = useStudents(!!user, user?.email, isAdmin || permissions.students);
   const classes = useClasses(!!user);
-  const payments = usePayments(!!user);
   const instructors = useInstructors(!!user);
   const plans = usePlans(!!user);
   const products = useProducts(!!user);
@@ -68,10 +86,20 @@ const AppContent = () => {
   const users = useUsers(isAdmin || permissions.users);
   const expenses = useExpenses(isAdmin || permissions.finance);
   const settings = useSettings(!!user);
-  const checkIns = useCheckIns(!!user);
+  const secrets = usePrivateSettings(isAdmin);
+
+  // Derive linked student IDs for secure data fetching (for parents/students)
+  const myStudentIds = React.useMemo(() => {
+    if (isAdmin || permissions.students) return undefined;
+    if (!students || students.length === 0) return [];
+    return students.map(s => s.id);
+  }, [students, isAdmin, permissions.students]);
+
+  const checkIns = useCheckIns(!!user, isAdmin || permissions.students, myStudentIds);
   const installments = useInstallments(isAdmin || permissions.finance);
-  const evaluations = useEvaluations(!!user);
-  const graduations = useGraduations(!!user);
+  const evaluations = useEvaluations(!!user, isAdmin || permissions.students, myStudentIds);
+  const graduations = useGraduations(!!user, isAdmin || permissions.students, myStudentIds);
+  const payments = usePayments(!!user, isAdmin || permissions.finance, myStudentIds);
 
   const [dataLoaded, setDataLoaded] = useState(false);
 
@@ -208,6 +236,7 @@ const AppContent = () => {
         return <SettingsView 
           belts={belts} 
           settings={settings} 
+          secrets={secrets}
           allData={{ 
             students, 
             payments, 
@@ -238,13 +267,13 @@ const AppContent = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-[#fafafa] flex">
+    <div className="min-h-screen bg-[#fafafa] dark:bg-gray-950 flex transition-colors duration-300">
       <Toaster position="top-right" />
       <LoadingOverlay isLoading={isLoading} />
       
       {/* Sidebar */}
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 w-72 bg-white border-r border-gray-100 transition-transform lg:translate-x-0 lg:static",
+        "fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-white/5 transition-transform lg:translate-x-0 lg:static",
         isSidebarOpen ? "translate-x-0" : "-translate-x-full"
       )}>
         <div className="h-full flex flex-col p-6">
@@ -253,9 +282,15 @@ const AppContent = () => {
               <Logo size="sm" settings={settings} />
             </div>
             <div className="flex flex-col">
-              <span className="text-lg font-serif font-bold text-black italic tracking-tighter leading-none">Gfteam</span>
+              <span className="text-lg font-serif font-bold text-black dark:text-white italic tracking-tighter leading-none">Gfteam</span>
               <span className="text-[9px] tracking-[0.2em] font-bold text-gray-400 uppercase">Limeira</span>
             </div>
+            <button 
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="ml-auto p-2 bg-gray-50 dark:bg-white/10 rounded-xl hover:bg-gray-100 dark:hover:bg-white/20 transition-all text-gray-400"
+            >
+              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
           </div>
           
           <nav className="flex-1 space-y-1">
@@ -275,10 +310,10 @@ const AppContent = () => {
                     "w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-sm transition-all group",
                     activeTab === item.id 
                       ? "bg-black text-white shadow-lg shadow-black/10" 
-                      : "text-gray-400 hover:bg-gray-50 hover:text-gray-900"
+                      : "text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white"
                   )}
                 >
-                  <item.icon className={cn("w-5 h-5", activeTab === item.id ? "text-white" : "text-gray-300 group-hover:text-gray-900")} />
+                  <item.icon className={cn("w-5 h-5", activeTab === item.id ? "text-white" : "text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white")} />
                   {item.label}
                 </button>
               );

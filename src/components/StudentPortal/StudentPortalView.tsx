@@ -8,7 +8,8 @@ import {
   Clock,
   TrendingUp,
   ChevronRight,
-  LogOut
+  LogOut,
+  ShieldAlert
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -31,11 +32,14 @@ interface StudentPortalViewProps {
 export const StudentPortalView = ({ students, payments, checkIns, belts, settings, evaluations, graduations }: StudentPortalViewProps) => {
   const { user, logout } = useAuth();
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'finance' | 'timeline'>('dashboard');
   const [studentData, setStudentData] = useState<any>(null);
   const [myPayments, setMyPayments] = useState<any[]>([]);
   const [myCheckIns, setMyCheckIns] = useState<any[]>([]);
   const [myEvaluations, setMyEvaluations] = useState<any[]>([]);
   const [myGraduations, setMyGraduations] = useState<any[]>([]);
+
+  const hasPendingPayments = myPayments.some(p => p.status === 'Pending');
 
   // Find all students linked to this email
   const linkedStudents = students.filter(s => s.email === user?.email);
@@ -214,6 +218,30 @@ export const StudentPortalView = ({ students, payments, checkIns, belts, setting
           <Logo size="sm" settings={settings} />
         </div>
       </header>
+
+      {hasPendingPayments && (
+        <motion.div 
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="p-4 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 rounded-3xl flex items-center justify-between gap-4"
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-rose-500 rounded-xl text-white">
+              <ShieldAlert className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="font-bold text-rose-900 dark:text-rose-100 text-sm">Mensalidade Pendente</p>
+              <p className="text-rose-600 dark:text-rose-400 text-[10px] font-medium uppercase tracking-widest">Regularize sua situação para garantir seu acesso às aulas</p>
+            </div>
+          </div>
+          <button 
+            onClick={() => setActiveTab('finance')}
+            className="px-4 py-2 bg-rose-600 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-rose-700 transition-all shadow-lg shadow-rose-600/20"
+          >
+            Pagar Agora
+          </button>
+        </motion.div>
+      )}
 
       {/* Belt Status Card */}
       <div className="p-8 bg-black rounded-[40px] text-white relative overflow-hidden shadow-2xl shadow-black/20">

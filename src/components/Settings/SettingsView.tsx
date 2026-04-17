@@ -27,6 +27,7 @@ import * as XLSX from 'xlsx';
 interface SettingsViewProps {
   belts: any[];
   settings: any;
+  secrets?: any;
   allData?: {
     students: any[];
     payments: any[];
@@ -38,7 +39,7 @@ interface SettingsViewProps {
   };
 }
 
-export const SettingsView = ({ belts, settings, allData }: SettingsViewProps) => {
+export const SettingsView = ({ belts, settings, secrets, allData }: SettingsViewProps) => {
   const [activeSubTab, setActiveSubTab] = useState('belts');
   
   // Belts State
@@ -57,22 +58,22 @@ export const SettingsView = ({ belts, settings, allData }: SettingsViewProps) =>
   const [isSavingPayment, setIsSavingPayment] = useState(false);
   const [paymentForm, setPaymentForm] = useState({
     stripePublicKey: settings?.stripePublicKey || '',
-    stripeSecretKey: settings?.stripeSecretKey || '',
+    stripeSecretKey: secrets?.stripeSecretKey || '',
     paymentProvider: settings?.paymentProvider || 'None'
   });
 
   const { isAdmin } = useAuth();
 
   useEffect(() => {
-    if (settings) {
-      if (settings.logoUrl) setLogoPreview(settings.logoUrl);
+    if (settings || secrets) {
+      if (settings?.logoUrl) setLogoPreview(settings.logoUrl);
       setPaymentForm({
-        stripePublicKey: settings.stripePublicKey || '',
-        stripeSecretKey: settings.stripeSecretKey || '',
-        paymentProvider: settings.paymentProvider || 'None'
+        stripePublicKey: settings?.stripePublicKey || '',
+        stripeSecretKey: secrets?.stripeSecretKey || '',
+        paymentProvider: settings?.paymentProvider || 'None'
       });
     }
-  }, [settings]);
+  }, [settings, secrets]);
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -125,10 +126,23 @@ export const SettingsView = ({ belts, settings, allData }: SettingsViewProps) =>
     e.preventDefault();
     setIsSavingPayment(true);
     try {
-      await setDoc(doc(db, 'settings', 'global'), {
-        ...paymentForm,
+      // Split public and private
+      const publicData = {
+        stripePublicKey: paymentForm.stripePublicKey,
+        paymentProvider: paymentForm.paymentProvider,
         updatedAt: serverTimestamp()
-      }, { merge: true });
+      };
+      
+      const privateData = {
+        stripeSecretKey: paymentForm.stripeSecretKey,
+        updatedAt: serverTimestamp()
+      };
+
+      await Promise.all([
+        setDoc(doc(db, 'settings', 'global'), publicData, { merge: true }),
+        setDoc(doc(db, 'secret_settings', 'global'), privateData, { merge: true })
+      ]);
+
       toast.success("Configurações de pagamento atualizadas!");
     } catch (error) {
       console.error("Error saving payment settings:", error);

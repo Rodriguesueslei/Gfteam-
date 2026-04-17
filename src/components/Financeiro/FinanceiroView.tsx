@@ -420,14 +420,15 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
                 )}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
-              {activeSubTab === 'history' ? payments.map(p => (
-                <tr key={p.id} className="hover:bg-gray-50/50 transition-colors group">
-                  <td className="px-8 py-5">
-                    <p className="text-sm font-bold text-gray-900">{students.find(s => s.id === p.studentId)?.name || 'Visitante'}</p>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase">{p.period}</p>
-                    {p.description && <p className="text-[9px] text-gray-400 italic">{p.description}</p>}
-                  </td>
+            <tbody className="divide-y divide-gray-50 dark:divide-white/5">
+              {activeSubTab === 'history' ? (
+                payments.length > 0 ? payments.map(p => (
+                  <tr key={p.id} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors group">
+                    <td className="px-8 py-5">
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">{students.find(s => s.id === p.studentId)?.name || 'Visitante'}</p>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase">{p.period}</p>
+                      {p.description && <p className="text-[9px] text-gray-400 italic">{p.description}</p>}
+                    </td>
                   <td className="px-8 py-5">
                     <span className="text-sm font-black text-emerald-600">{formatCurrency(p.amount)}</span>
                   </td>
@@ -439,15 +440,15 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
                       {p.method}
                     </span>
                   </td>
-                  {isAdmin && (
-                    <td className="px-8 py-5 text-right">
-                      <button 
-                        onClick={async () => {
-                          if (confirm("Deseja excluir este pagamento?")) {
-                            await deleteDoc(doc(db, 'payments', p.id));
-                            toast.success("Pagamento excluído.");
-                          }
-                        }}
+                    {isAdmin && (
+                      <td className="px-8 py-5 text-right">
+                        <button 
+                          onClick={async () => {
+                            if (window.confirm("Deseja excluir este pagamento?")) {
+                              await deleteDoc(doc(db, 'payments', p.id));
+                              toast.success("Pagamento excluído.");
+                            }
+                          }}
                         className="p-2 text-gray-400 hover:text-rose-500 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -455,7 +456,7 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
                     </td>
                   )}
                 </tr>
-              )) : activeSubTab === 'expenses' ? expenses.map(e => (
+              )) : null) : activeSubTab === 'expenses' ? expenses.map(e => (
                 <tr key={e.id} className="hover:bg-gray-50/50 transition-colors group">
                   <td className="px-8 py-5">
                     <p className="text-sm font-bold text-gray-900">{e.description}</p>
@@ -475,7 +476,7 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
                     <td className="px-8 py-5 text-right">
                       <button 
                         onClick={async () => {
-                          if (confirm("Deseja excluir esta despesa?")) {
+                          if (window.confirm("Deseja excluir esta despesa?")) {
                             await deleteDoc(doc(db, 'expenses', e.id));
                             toast.success("Despesa excluída.");
                           }

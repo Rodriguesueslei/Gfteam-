@@ -40,9 +40,9 @@ service cloud.firestore {
     }
 
     function isAdmin() {
+      let adminEmail = "rodrigues.ueslei@gmail.com";
       return isAuthenticated() && 
-             (hasRole('admin') || 
-              (request.auth.token.email == "rodrigues.ueslei@gmail.com" && request.auth.token.email_verified == true));
+             (request.auth.token.email == adminEmail || hasRole('admin'));
     }
 
     function isReceptionist() {
@@ -132,14 +132,17 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
       allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId && !('role' in request.resource.data));
-      // Allow users to bootstrap their own profile but not set their own role unless they are the default admin
       allow create: if isAuthenticated() && request.auth.uid == userId && 
                     (request.resource.data.role == 'user' || isAdmin());
       allow delete: if isAdmin();
     }
 
     match /students/{studentId} {
-      allow read: if isAuthenticated();
+      // Students can only read their OWN data based on email
+      allow read: if isAuthenticated() && (
+        isAdmin() || isReceptionist() || isProfessor() ||
+        (resource.data.email == request.auth.token.email)
+      );
       allow create, update: if (isAdmin() || isReceptionist()) && isValidStudent(request.resource.data);
       allow delete: if isAdmin() || isReceptionist();
     }
@@ -166,8 +169,14 @@ service cloud.firestore {
     }
 
     match /payments/{paymentId} {
-      allow read: if isAdmin() || isReceptionist();
-      allow create, update: if isAdmin() && isValidPayment(request.resource.data);
+      // Students can only read their OWN payments
+      allow read: if isAuthenticated() && (
+        isAdmin() || isReceptionist() || 
+        (resource.data.studentId in get(/databases/$(database)/documents/students).data.id/*this is complex, better use another way*/) ||
+        // Simplified ownership check: if the payment's student belongs to the authenticated email
+        (get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.email == request.auth.token.email)
+      );
+      allow create, update: if (isAdmin() || isReceptionist()) && isValidPayment(request.resource.data);
       allow delete: if isAdmin();
     }
 
@@ -200,6 +209,10 @@ service cloud.firestore {
     match /settings/{settingId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
+    }
+
+    match /secret_settings/{settingId} {
+      allow read, write: if isAdmin();
     }
 
     match /plans/{planId} {

@@ -49,6 +49,7 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
   const [birthdays, setBirthdays] = useState<any[]>([]);
   const [lowStockProducts, setLowStockProducts] = useState<any[]>([]);
   const [presenceData, setPresenceData] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'overview' | 'analysis'>('overview');
 
   useEffect(() => {
     const now = new Date();
@@ -166,49 +167,71 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {/* Attendance Analysis / Empty States Example */}
         <div className="lg:col-span-2 space-y-8">
           <GraduationSuggestions students={students} checkIns={checkIns} belts={belts} />
 
           {/* Presence Chart */}
-          <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-3xl">
+          <div className="p-6 bg-white dark:bg-gray-900 border border-gray-100 dark:border-white/5 shadow-sm rounded-[40px] overflow-hidden">
             <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-gray-400" />
-                <h3 className="text-lg font-bold text-gray-900">Fluxo de Alunos (7 dias)</h3>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-gray-50 dark:bg-white/5 rounded-xl">
+                  <BarChart3 className="w-5 h-5 text-black dark:text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Fluxo de Alunos</h3>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Últimos 7 dias de atividades</p>
+                </div>
               </div>
-              <TrendingUp className="w-5 h-5 text-emerald-500" />
+              <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-black uppercase tracking-tighter">
+                <TrendingUp className="w-3 h-3" />
+                Em crescimento
+              </div>
             </div>
-            <div className="h-[250px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={presenceData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
-                  <XAxis 
-                    dataKey="day" 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{ fontSize: 12, fontWeight: 600, fill: '#9ca3af' }}
-                    dy={10}
-                  />
-                  <YAxis hide />
-                  <Tooltip 
-                    cursor={{ fill: '#f9fafb' }}
-                    contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                  />
-                  <Bar dataKey="count" radius={[6, 6, 0, 0]} barSize={40}>
-                    {presenceData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={index === presenceData.length - 1 ? '#111827' : '#e5e7eb'} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            
+            {presenceData.some(d => d.count > 0) ? (
+              <div className="h-[250px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={presenceData}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                    <XAxis 
+                      dataKey="day" 
+                      axisLine={false} 
+                      tickLine={false} 
+                      tick={{ fontSize: 10, fontWeight: 800, fill: '#9ca3af', textTransform: 'uppercase' }}
+                      dy={10}
+                    />
+                    <YAxis hide />
+                    <Tooltip 
+                      cursor={{ fill: '#f9fafb' }}
+                      contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                      labelStyle={{ fontWeight: 800, textTransform: 'uppercase', color: '#111827' }}
+                    />
+                    <Bar dataKey="count" radius={[12, 12, 0, 0]} barSize={40}>
+                      {presenceData.map((entry, index) => (
+                        <Cell 
+                          key={`cell-${index}`} 
+                          fill={index === presenceData.length - 1 ? '#000000' : '#E5E7EB'} 
+                          className="transition-all duration-500"
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="h-[250px] flex flex-col items-center justify-center text-center p-6 bg-gray-50/50 rounded-3xl border border-dashed border-gray-200">
+                <Clock className="w-12 h-12 text-gray-200 mb-4" />
+                <p className="text-sm text-gray-400 italic">Nenhum check-in registrado nos últimos 7 dias.</p>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-3xl">
+            <div className="p-6 bg-white dark:bg-gray-900 border border-gray-100 dark:border-white/5 shadow-sm rounded-3xl">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-gray-900">Alunos Recentes</h3>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Alunos Recentes</h3>
                 <button className="text-sm font-medium text-blue-600 hover:underline">Ver todos</button>
               </div>
               <div className="space-y-4">
@@ -233,9 +256,9 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
               </div>
             </div>
 
-            <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-3xl">
+            <div className="p-6 bg-white dark:bg-gray-900 border border-gray-100 dark:border-white/5 shadow-sm rounded-3xl">
               <div className="flex items-center justify-between mb-6">
-                <h3 className="text-lg font-bold text-gray-900">Próximas Aulas</h3>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Próximas Aulas</h3>
                 <button className="text-sm font-medium text-blue-600 hover:underline">Ver agenda</button>
               </div>
               <div className="space-y-4">
@@ -263,12 +286,12 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
 
         <div className="space-y-8">
           {/* Birthdays Section */}
-          <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-3xl">
+          <div className="p-6 bg-white dark:bg-gray-900 border border-gray-100 dark:border-white/5 shadow-sm rounded-3xl">
             <div className="flex items-center gap-2 mb-6">
-              <div className="p-2 bg-rose-100 rounded-lg">
+              <div className="p-2 bg-rose-100 dark:bg-rose-500/20 rounded-lg">
                 <TrendingUp className="w-4 h-4 text-rose-600" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Aniversariantes da Semana</h3>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Aniversariantes da Semana</h3>
             </div>
             <div className="space-y-4">
               {birthdays.length > 0 ? (
@@ -312,12 +335,12 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
 
           {/* Low Stock Alerts */}
           {(isAdmin || permissions.inventory) && (
-            <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-3xl">
+            <div className="p-6 bg-white dark:bg-gray-900 border border-gray-100 dark:border-white/5 shadow-sm rounded-3xl">
               <div className="flex items-center gap-2 mb-6">
-                <div className="p-2 bg-amber-100 rounded-lg">
+                <div className="p-2 bg-amber-100 dark:bg-amber-500/20 rounded-lg">
                   <AlertTriangle className="w-4 h-4 text-amber-600" />
                 </div>
-                <h3 className="text-lg font-bold text-gray-900">Estoque Baixo</h3>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Estoque Baixo</h3>
               </div>
               <div className="space-y-3">
                 {lowStockProducts.length > 0 ? (

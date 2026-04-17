@@ -12,7 +12,8 @@ import {
   Palette,
   Layout as LayoutIcon,
   FileJson,
-  Package
+  Package,
+  CreditCard
 } from 'lucide-react';
 import { collection, doc, addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -53,11 +54,23 @@ export const SettingsView = ({ belts, settings, allData }: SettingsViewProps) =>
 
   const [logoPreview, setLogoPreview] = useState<string | null>(settings?.logoUrl || null);
   const [isSavingLogo, setIsSavingLogo] = useState(false);
+  const [isSavingPayment, setIsSavingPayment] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({
+    stripePublicKey: settings?.stripePublicKey || '',
+    stripeSecretKey: settings?.stripeSecretKey || '',
+    paymentProvider: settings?.paymentProvider || 'None'
+  });
+
   const { isAdmin } = useAuth();
 
   useEffect(() => {
-    if (settings?.logoUrl) {
-      setLogoPreview(settings.logoUrl);
+    if (settings) {
+      if (settings.logoUrl) setLogoPreview(settings.logoUrl);
+      setPaymentForm({
+        stripePublicKey: settings.stripePublicKey || '',
+        stripeSecretKey: settings.stripeSecretKey || '',
+        paymentProvider: settings.paymentProvider || 'None'
+      });
     }
   }, [settings]);
 
@@ -108,6 +121,23 @@ export const SettingsView = ({ belts, settings, allData }: SettingsViewProps) =>
     }
   };
 
+  const handleSavePaymentSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingPayment(true);
+    try {
+      await setDoc(doc(db, 'settings', 'global'), {
+        ...paymentForm,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      toast.success("Configurações de pagamento atualizadas!");
+    } catch (error) {
+      console.error("Error saving payment settings:", error);
+      toast.error("Erro ao salvar configurações de pagamento.");
+    } finally {
+      setIsSavingPayment(false);
+    }
+  };
+
   const handleExportAllData = () => {
     if (!allData) return;
     try {
@@ -151,6 +181,7 @@ export const SettingsView = ({ belts, settings, allData }: SettingsViewProps) =>
         {[
           { id: 'belts', label: 'Faixas', icon: Shield },
           { id: 'logo', label: 'Identidade', icon: Palette },
+          { id: 'payments', label: 'Pagamentos', icon: CreditCard },
           { id: 'data', label: 'Dados & Backup', icon: Database }
         ].map(tab => (
           <button 
@@ -230,6 +261,84 @@ export const SettingsView = ({ belts, settings, allData }: SettingsViewProps) =>
                 </label>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeSubTab === 'payments' && (
+        <div className="max-w-2xl space-y-6">
+          <div className="p-8 bg-white border border-gray-100 rounded-[32px] shadow-sm space-y-8">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-emerald-100 rounded-2xl">
+                <CreditCard className="w-6 h-6 text-emerald-600" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Integração de Pagamentos</h2>
+                <p className="text-sm text-gray-500">Configure as APIs para recebimento online.</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSavePaymentSettings} className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Provedor de Pagamento</label>
+                <select 
+                  className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none appearance-none font-bold"
+                  value={paymentForm.paymentProvider}
+                  onChange={e => setPaymentForm({...paymentForm, paymentProvider: e.target.value})}
+                >
+                  <option value="None">Desativado</option>
+                  <option value="Stripe">Stripe (Global)</option>
+                  <option value="MercadoPago">Mercado Pago (Brasil) - Em breve</option>
+                </select>
+              </div>
+
+              {paymentForm.paymentProvider === 'Stripe' && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-4 pt-4 border-t border-gray-100"
+                >
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Stripe Publishable Key</label>
+                    <input 
+                      type="text"
+                      className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none font-mono text-xs"
+                      placeholder="pk_test_..."
+                      value={paymentForm.stripePublicKey}
+                      onChange={e => setPaymentForm({...paymentForm, stripePublicKey: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Stripe Secret Key</label>
+                    <input 
+                      type="password"
+                      className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none font-mono text-xs"
+                      placeholder="sk_test_..."
+                      value={paymentForm.stripeSecretKey}
+                      onChange={e => setPaymentForm({...paymentForm, stripeSecretKey: e.target.value})}
+                    />
+                  </div>
+                  <div className="p-4 bg-amber-50 rounded-2xl flex gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
+                    <p className="text-[10px] text-amber-700 font-medium leading-relaxed">
+                      Lembre-se: Chaves secretas nunca devem ser compartilhadas. Elas serão salvas de forma segura no seu banco de dados privado.
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+
+              <button 
+                type="submit" 
+                disabled={isSavingPayment}
+                className="w-full py-4 bg-black text-white font-black rounded-2xl hover:bg-gray-800 transition-all uppercase italic shadow-lg active:scale-95 flex items-center justify-center gap-2"
+              >
+                {isSavingPayment ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  "Salvar Configurações"
+                )}
+              </button>
+            </form>
           </div>
         </div>
       )}

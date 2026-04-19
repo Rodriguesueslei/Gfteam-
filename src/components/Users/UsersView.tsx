@@ -6,7 +6,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useRoles } from '../../hooks/useFirebaseData';
 import { cn } from '../../utils/formatters';
 import toast from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface UsersViewProps {
   users: any[];

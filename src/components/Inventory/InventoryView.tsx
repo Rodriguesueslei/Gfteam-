@@ -14,7 +14,7 @@ import { format } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatCurrency, cn } from '../../utils/formatters';
 import { StatCard } from '../ui/StatCard';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { addDoc, collection, doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import toast from 'react-hot-toast';
@@ -43,7 +43,8 @@ export const InventoryView = ({ products, sales, students }: { products: any[], 
     amount: 0,
     installments: 1,
     method: 'Dinheiro',
-    date: format(new Date(), 'yyyy-MM-dd')
+    date: format(new Date(), 'yyyy-MM-dd'),
+    firstPaymentDate: format(new Date(), 'yyyy-MM-dd')
   });
   const { isAdmin } = useAuth();
 
@@ -66,7 +67,8 @@ export const InventoryView = ({ products, sales, students }: { products: any[], 
                 amount: 0,
                 installments: 1,
                 method: 'Dinheiro',
-                date: format(new Date(), 'yyyy-MM-dd')
+                date: format(new Date(), 'yyyy-MM-dd'),
+                firstPaymentDate: format(new Date(), 'yyyy-MM-dd')
               });
               setIsSaleModalOpen(true);
             }}
@@ -234,7 +236,7 @@ export const InventoryView = ({ products, sales, students }: { products: any[], 
                   // 2. Generate installments if applicable
                   if (saleFormData.installments > 1 && saleFormData.method === 'Parcelado Academia') {
                     const installmentAmount = saleFormData.amount / saleFormData.installments;
-                    const startDate = new Date(saleFormData.date);
+                    const startDate = new Date(saleFormData.firstPaymentDate + 'T12:00:00'); // Use T12:00:00 to avoid timezone shifts
 
                     for (let i = 0; i < saleFormData.installments; i++) {
                       const dueDate = new Date(startDate);
@@ -249,7 +251,7 @@ export const InventoryView = ({ products, sales, students }: { products: any[], 
                         installmentNumber: i + 1,
                         totalInstallments: saleFormData.installments,
                         dueDate: Timestamp.fromDate(dueDate),
-                        status: i === 0 ? 'paid' : 'pending', // First installment usually paid upfront
+                        status: 'pending',
                         paymentMethod: saleFormData.method,
                         createdAt: Timestamp.now()
                       });
@@ -323,6 +325,19 @@ export const InventoryView = ({ products, sales, students }: { products: any[], 
                     <option value="Parcelado Academia">Parcelado Academia (Direto)</option>
                   </select>
                 </div>
+
+                {saleFormData.method === 'Parcelado Academia' && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-4">Data do Primeiro Pagamento</label>
+                    <input 
+                      type="date"
+                      required
+                      className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none font-bold"
+                      value={saleFormData.firstPaymentDate}
+                      onChange={e => setSaleFormData({...saleFormData, firstPaymentDate: e.target.value})}
+                    />
+                  </div>
+                )}
 
                 <button type="submit" className="w-full py-4 bg-emerald-600 text-white font-black rounded-2xl hover:bg-emerald-700 transition-all uppercase italic">Finalizar Venda</button>
               </form>

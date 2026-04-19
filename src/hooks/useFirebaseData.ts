@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { useState, useEffect } from 'react';
 import { db } from '../firebase';
+import { useAuth } from '../contexts/AuthContext';
 import { handleFirestoreError, OperationType } from '../utils/errorHandlers';
 
 export const useBelts = (enabled: boolean) => {

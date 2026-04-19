@@ -47,6 +47,47 @@ async function startServer() {
     }
   });
 
+  // Gympass Integration Endpoints (Placeholders)
+  app.post("/api/gympass/validate-token", async (req, res) => {
+    try {
+      const { token } = req.body;
+      const clientId = process.env.GYMPASS_CLIENT_ID;
+      const clientSecret = process.env.GYMPASS_CLIENT_SECRET;
+
+      if (!clientId || !clientSecret) {
+        return res.status(400).json({ error: "Gympass API credentials not configured." });
+      }
+
+      // TODO: Implement actual Wellhub (Gympass) API call here
+      // 1. Get access token
+      // 2. Validate student token
+      
+      console.log("Validating Gympass token:", token);
+      
+      // Mock response for now
+      res.json({ 
+        valid: true, 
+        student: { name: "Mock Gympass User", id: "gym_123" },
+        message: "Implementação da API Wellhub necessária" 
+      });
+    } catch (error: any) {
+      console.error("Gympass error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/gympass/checkin", async (req, res) => {
+    try {
+      const { gympassId, classId } = req.body;
+      console.log(`Registering Gympass check-in for student ${gympassId} in class ${classId}`);
+      
+      // TODO: Notify Wellhub API about check-in
+      res.json({ success: true, message: "Check-in Gympass registrado (Mock)" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");

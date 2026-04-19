@@ -8,7 +8,8 @@ import {
   Clock, 
   AlertTriangle,
   TrendingUp,
-  BarChart3
+  BarChart3,
+  ShoppingCart
 } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, isWithinInterval, parseISO, setYear } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -19,6 +20,7 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
+  Legend,
   ResponsiveContainer,
   Cell
 } from 'recharts';
@@ -35,13 +37,16 @@ interface DashboardViewProps {
   expenses: any[];
   products: any[];
   checkIns: any[];
+  onNavigate: (tab: string) => void;
 }
 
-export const DashboardView = ({ belts, students, payments, classes, expenses, products, checkIns }: DashboardViewProps) => {
+export const DashboardView = ({ belts, students, payments, classes, expenses, products, checkIns, onNavigate }: DashboardViewProps) => {
   const { isAdmin, permissions } = useAuth();
   const [stats, setStats] = useState({
     totalStudents: 0,
     activeStudents: 0,
+    activeBJJ: 0,
+    activeMuayThai: 0,
     monthlyRevenue: 0,
     monthlyExpenses: 0,
     pendingPayments: 0
@@ -75,11 +80,14 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
     
     const paidStudentIds = new Set(payments.filter((p: any) => p.period === currentMonth).map((p: any) => p.studentId));
     const nonArchivedStudents = students.filter((s: any) => s.status !== 'Archived');
-    const pending = nonArchivedStudents.filter((s: any) => s.status === 'Active' && !paidStudentIds.has(s.id)).length;
+    const activeStudents = nonArchivedStudents.filter((s: any) => s.status === 'Active');
+    const pending = activeStudents.filter((s: any) => !paidStudentIds.has(s.id)).length;
 
     setStats({
       totalStudents: nonArchivedStudents.length,
-      activeStudents: nonArchivedStudents.filter((s: any) => s.status === 'Active').length,
+      activeStudents: activeStudents.length,
+      activeBJJ: activeStudents.filter(s => (s.modalities || ['Jiu-Jitsu']).includes('Jiu-Jitsu')).length,
+      activeMuayThai: activeStudents.filter(s => (s.modalities || []).includes('Muay Thai')).length,
       monthlyRevenue: revenue,
       monthlyExpenses: monthlyExpenses,
       pendingPayments: pending
@@ -125,14 +133,17 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
     }).reverse();
 
     const presence = last7Days.map(day => {
-      const count = checkIns.filter(c => {
+      const dayCheckins = checkIns.filter(c => {
         if (!c.time?.seconds) return false;
         const cDate = new Date(c.time.seconds * 1000);
         return format(cDate, 'yyyy-MM-dd') === day;
-      }).length;
+      });
+
       return {
         day: format(new Date(day), 'EEE', { locale: ptBR }),
-        count
+        bjj: dayCheckins.filter(c => c.modality === 'Jiu-Jitsu' || !c.modality).length,
+        muayThai: dayCheckins.filter(c => c.modality === 'Muay Thai').length,
+        count: dayCheckins.length
       };
     });
     setPresenceData(presence);
@@ -143,20 +154,47 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
   const upcomingClasses = classes.slice(0, 5);
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-black text-black italic uppercase tracking-tighter">Dashboard</h1>
-          <p className="text-gray-500 font-medium">Bem-vindo ao OssManager. Aqui está o resumo da sua academia.</p>
+    <div className="space-y-6 sm:space-y-8 animate-in fade-in transition-all duration-500">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="space-y-1">
+          <h1 className="text-3xl sm:text-4xl font-black text-black dark:text-white italic uppercase tracking-tighter">Dashboard</h1>
+          <p className="text-sm text-gray-500 font-medium">Bem-vindo ao OssManager. Aqui está o resumo da sua academia.</p>
         </div>
-        <div className="flex gap-1">
-          <div className="w-2 h-8 rounded-full bg-emerald-500" />
-          <div className="w-2 h-8 rounded-full bg-amber-500" />
-          <div className="w-2 h-8 rounded-full bg-blue-500" />
+        <div className="flex flex-wrap items-center gap-3">
+          <button 
+            onClick={() => onNavigate('inventory')}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 py-3 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase tracking-widest transition-all hover:bg-emerald-700 shadow-lg shadow-emerald-500/20"
+          >
+            <ShoppingCart className="w-4 h-4" />
+            <span className="sm:inline">Nova Venda</span>
+          </button>
+          
+          <div className="flex-1 sm:flex-none flex bg-gray-100 p-1 rounded-2xl">
+            <button 
+              onClick={() => setActiveTab('overview')}
+              className={cn(
+                "flex-1 px-4 sm:px-6 py-2 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all",
+                activeTab === 'overview' ? "bg-white text-black shadow-sm" : "text-gray-400 hover:text-gray-600"
+              )}
+            >
+              Geral
+            </button>
+            <button 
+              onClick={() => setActiveTab('analysis')}
+              className={cn(
+                "flex-1 px-4 sm:px-6 py-2 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all",
+                activeTab === 'analysis' ? "bg-white text-black shadow-sm" : "text-gray-400 hover:text-gray-600"
+              )}
+            >
+              Análise
+            </button>
+          </div>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-4">
+      {activeTab === 'overview' ? (
+        <div className="space-y-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         <StatCard title="Total de Alunos" value={stats.totalStudents} icon={Users} color="bg-blue-600 text-white" />
         <StatCard title="Alunos Ativos" value={stats.activeStudents} icon={CheckCircle2} color="bg-emerald-600 text-white" />
         {(isAdmin || permissions.finance) && (
@@ -167,31 +205,31 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
         {/* Attendance Analysis / Empty States Example */}
-        <div className="lg:col-span-2 space-y-8">
+        <div className="xl:col-span-2 space-y-8">
           <GraduationSuggestions students={students} checkIns={checkIns} belts={belts} />
 
           {/* Presence Chart */}
-          <div className="p-6 bg-white dark:bg-gray-900 border border-gray-100 dark:border-white/5 shadow-sm rounded-[40px] overflow-hidden">
-            <div className="flex items-center justify-between mb-6">
+          <div className="p-5 sm:p-8 bg-white dark:bg-gray-900 border border-gray-100 dark:border-white/5 shadow-sm rounded-[40px] xl:rounded-[48px] overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-gray-50 dark:bg-white/5 rounded-xl">
                   <BarChart3 className="w-5 h-5 text-black dark:text-white" />
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-gray-900 dark:text-white tracking-tight">Fluxo de Alunos</h3>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Últimos 7 dias de atividades</p>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Atividades nos últimos 7 dias</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-black uppercase tracking-tighter">
+              <div className="self-start sm:self-auto flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-black uppercase tracking-tighter">
                 <TrendingUp className="w-3 h-3" />
                 Em crescimento
               </div>
             </div>
             
             {presenceData.some(d => d.count > 0) ? (
-              <div className="h-[250px] w-full">
+              <div className="h-[200px] sm:h-[250px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={presenceData}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
@@ -208,15 +246,9 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
                       contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
                       labelStyle={{ fontWeight: 800, textTransform: 'uppercase', color: '#111827' }}
                     />
-                    <Bar dataKey="count" radius={[12, 12, 0, 0]} barSize={40}>
-                      {presenceData.map((entry, index) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={index === presenceData.length - 1 ? '#000000' : '#E5E7EB'} 
-                          className="transition-all duration-500"
-                        />
-                      ))}
-                    </Bar>
+                    <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', paddingTop: '20px' }} />
+                    <Bar dataKey="bjj" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} name="Jiu-Jitsu" />
+                    <Bar dataKey="muayThai" stackId="a" fill="#f43f5e" radius={[12, 12, 0, 0]} name="Muay Thai" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -364,6 +396,79 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
           )}
         </div>
       </div>
+    </div>
+  ) : (
+    <div className="space-y-8 animate-in fade-in zoom-in duration-500">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="p-6 bg-white border border-gray-100 rounded-[40px] shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 bg-blue-500 text-white rounded-2xl flex items-center justify-center font-black italic">BJJ</div>
+          <div>
+            <p className="text-2xl font-black text-gray-900">{stats.activeBJJ}</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Alunos Ativos Jiu-Jitsu</p>
+          </div>
+        </div>
+        <div className="p-6 bg-white border border-gray-100 rounded-[40px] shadow-sm flex items-center gap-4">
+          <div className="w-12 h-12 bg-rose-500 text-white rounded-2xl flex items-center justify-center font-black italic">MT</div>
+          <div>
+            <p className="text-2xl font-black text-gray-900">{stats.activeMuayThai}</p>
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Alunos Ativos Muay Thai</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="p-8 bg-white dark:bg-gray-900 border border-gray-100 dark:border-white/5 shadow-sm rounded-[48px] overflow-hidden">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h3 className="text-2xl font-black text-gray-900 dark:text-white uppercase italic tracking-tighter">Fluxo por Modalidade</h3>
+            <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">Distribuição de check-ins nos últimos 7 dias</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-blue-500" />
+              <span className="text-[10px] font-bold text-gray-500 uppercase">Jiu-Jitsu</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-rose-500" />
+              <span className="text-[10px] font-bold text-gray-500 uppercase">Muay Thai</span>
+            </div>
+          </div>
+        </div>
+        
+        {presenceData.some(d => d.count > 0) ? (
+          <div className="h-[350px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={presenceData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f3f4f6" />
+                <XAxis 
+                  dataKey="day" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 10, fontWeight: 800, fill: '#9ca3af', textTransform: 'uppercase' }}
+                  dy={10}
+                />
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 800, fill: '#9ca3af' }} />
+                <Tooltip 
+                  cursor={{ fill: '#f9fafb' }}
+                  contentStyle={{ borderRadius: '24px', border: 'none', boxShadow: '0 20px 25px -5px rgb(0 0 0 / 0.1)' }}
+                  labelStyle={{ fontWeight: 800, textTransform: 'uppercase', color: '#111827' }}
+                />
+                <Legend iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', paddingTop: '20px' }} />
+                <Bar dataKey="bjj" stackId="a" fill="#3b82f6" radius={[0, 0, 0, 0]} name="Jiu-Jitsu" />
+                <Bar dataKey="muayThai" stackId="a" fill="#f43f5e" radius={[12, 12, 0, 0]} name="Muay Thai" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <div className="h-[300px] flex flex-col items-center justify-center text-center p-12 bg-gray-50/50 rounded-[40px] border border-dashed border-gray-200">
+            <div className="p-6 bg-white rounded-full shadow-sm mb-4">
+              <Clock className="w-12 h-12 text-gray-200" />
+            </div>
+            <p className="text-gray-400 italic">Nenhum check-in registrado para análise nos últimos 7 dias.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )}
     </div>
   );
 };

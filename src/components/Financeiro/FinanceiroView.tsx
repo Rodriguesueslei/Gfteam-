@@ -11,7 +11,9 @@ import {
   TrendingDown,
   PieChart as PieChartIcon,
   X,
-  MessageCircle
+  MessageCircle,
+  Search,
+  ShoppingCart
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { 
@@ -26,7 +28,7 @@ import {
   Pie,
   Cell
 } from 'recharts';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { Timestamp, addDoc, collection, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -48,7 +50,8 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<any>(null);
   const [editingExpense, setEditingExpense] = useState<any>(null);
-  const [installmentFilter, setInstallmentFilter] = useState<'all' | 'pending' | 'paid'>('pending');
+  const [installmentFilter, setInstallmentFilter] = useState<'all' | 'pending' | 'paid' | 'overdue'>('all');
+  const [searchTerm, setSearchTerm] = useState('');
   const { isAdmin, isReceptionist } = useAuth();
   
   const [formData, setFormData] = useState({
@@ -196,9 +199,32 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
   };
 
   const filteredInstallments = (installments || []).filter(inst => {
+    const matchesSearch = inst.studentName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                         inst.productName?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    if (!matchesSearch) return false;
+
+    const isOverdue = inst.status === 'pending' && 
+                     inst.dueDate?.seconds && 
+                     new Date(inst.dueDate.seconds * 1000) < new Date();
+
     if (installmentFilter === 'all') return true;
+    if (installmentFilter === 'overdue') return isOverdue;
+    if (installmentFilter === 'pending') return inst.status === 'pending' && !isOverdue;
     return inst.status === installmentFilter;
   });
+
+  const filteredPayments = payments.filter(p => {
+    const student = students.find(s => s.id === p.studentId);
+    return student?.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+           p.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+           p.method?.toLowerCase().includes(searchTerm.toLowerCase());
+  });
+
+  const filteredExpenses = (expenses || []).filter(e => 
+    e.description?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    e.category?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
 
   const COLORS = ['#111827', '#4b5563', '#9ca3af', '#e5e7eb', '#3b82f6', '#10b981'];
 
@@ -350,7 +376,7 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
         <div className="p-8 border-b border-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex flex-wrap gap-2">
             <button 
-              onClick={() => setActiveSubTab('history')}
+              onClick={() => { setActiveSubTab('history'); setSearchTerm(''); }}
               className={cn(
                 "px-6 py-2 rounded-xl font-bold text-sm transition-all",
                 activeSubTab === 'history' ? "bg-black text-white" : "text-gray-400 hover:bg-gray-50"
@@ -359,7 +385,7 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
               Pagamentos
             </button>
             <button 
-              onClick={() => setActiveSubTab('expenses')}
+              onClick={() => { setActiveSubTab('expenses'); setSearchTerm(''); }}
               className={cn(
                 "px-6 py-2 rounded-xl font-bold text-sm transition-all",
                 activeSubTab === 'expenses' ? "bg-black text-white" : "text-gray-400 hover:bg-gray-50"
@@ -368,7 +394,7 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
               Despesas
             </button>
             <button 
-              onClick={() => setActiveSubTab('installments')}
+              onClick={() => { setActiveSubTab('installments'); setSearchTerm(''); }}
               className={cn(
                 "px-6 py-2 rounded-xl font-bold text-sm transition-all",
                 activeSubTab === 'installments' ? "bg-black text-white" : "text-gray-400 hover:bg-gray-50"
@@ -378,22 +404,35 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
             </button>
           </div>
           
-          {activeSubTab === 'installments' && (
-            <div className="flex bg-gray-100 p-1 rounded-xl">
-              {(['all', 'pending', 'paid'] as const).map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setInstallmentFilter(f)}
-                  className={cn(
-                    "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                    installmentFilter === f ? "bg-white text-black shadow-sm" : "text-gray-400 hover:text-gray-600"
-                  )}
-                >
-                  {f === 'all' ? 'Todas' : f === 'pending' ? 'Pendentes' : 'Pagas'}
-                </button>
-              ))}
+          <div className="flex flex-col sm:flex-row items-center gap-4">
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute w-4 h-4 text-gray-400 left-3 top-1/2 -translate-y-1/2" />
+              <input 
+                type="text" 
+                placeholder="Buscar..." 
+                className="w-full pl-10 pr-4 py-2 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-gray-200 outline-none"
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+              />
             </div>
-          )}
+
+            {activeSubTab === 'installments' && (
+              <div className="flex bg-gray-100 p-1 rounded-xl">
+                {(['all', 'pending', 'overdue', 'paid'] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setInstallmentFilter(f)}
+                    className={cn(
+                      "px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
+                      installmentFilter === f ? "bg-white text-black shadow-sm" : "text-gray-400 hover:text-gray-600"
+                    )}
+                  >
+                    {f === 'all' ? 'Todas' : f === 'pending' ? 'Pendentes' : f === 'overdue' ? 'Atrasadas' : 'Pagas'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         
         <div className="overflow-x-auto">
@@ -422,12 +461,19 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-white/5">
               {activeSubTab === 'history' ? (
-                payments.length > 0 ? payments.map(p => (
+                filteredPayments.length > 0 ? filteredPayments.map(p => (
                   <tr key={p.id} className="hover:bg-gray-50/50 dark:hover:bg-white/5 transition-colors group">
                     <td className="px-8 py-5">
-                      <p className="text-sm font-bold text-gray-900 dark:text-white">{students.find(s => s.id === p.studentId)?.name || 'Visitante'}</p>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase">{p.period}</p>
-                      {p.description && <p className="text-[9px] text-gray-400 italic">{p.description}</p>}
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400">
+                          <DollarSign className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-gray-900 dark:text-white">{students.find(s => s.id === p.studentId)?.name || 'Visitante'}</p>
+                          <p className="text-[10px] text-gray-400 font-bold uppercase">{p.period}</p>
+                          {p.description && <p className="text-[9px] text-gray-400 italic">{p.description}</p>}
+                        </div>
+                      </div>
                     </td>
                   <td className="px-8 py-5">
                     <span className="text-sm font-black text-emerald-600">{formatCurrency(p.amount)}</span>
@@ -456,7 +502,7 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
                     </td>
                   )}
                 </tr>
-              )) : null) : activeSubTab === 'expenses' ? expenses.map(e => (
+              )) : null) : activeSubTab === 'expenses' ? filteredExpenses.map(e => (
                 <tr key={e.id} className="hover:bg-gray-50/50 transition-colors group">
                   <td className="px-8 py-5">
                     <p className="text-sm font-bold text-gray-900">{e.description}</p>
@@ -490,10 +536,17 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
                 </tr>
               )) : filteredInstallments.map(inst => (
                 <tr key={inst.id} className="hover:bg-gray-50/50 transition-colors group">
-                  <td className="px-8 py-5">
-                    <p className="text-sm font-bold text-gray-900">{inst.studentName}</p>
-                    <p className="text-[10px] text-gray-400 font-bold uppercase">{inst.productName}</p>
-                  </td>
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center text-gray-400">
+                          <ShoppingCart className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-sm font-bold text-gray-900">{inst.studentName}</p>
+                          <p className="text-[10px] text-gray-400 font-bold uppercase">{inst.productName}</p>
+                        </div>
+                      </div>
+                    </td>
                   <td className="px-8 py-5">
                     <span className="text-xs font-bold text-gray-500">{inst.installmentNumber}/{inst.totalInstallments}</span>
                   </td>
@@ -508,9 +561,13 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
                   <td className="px-8 py-5">
                     <span className={cn(
                       "px-3 py-1 text-[10px] font-bold rounded-full uppercase tracking-wider",
-                      inst.status === 'paid' ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"
+                      inst.status === 'paid' ? "bg-emerald-50 text-emerald-600" : 
+                      (inst.status === 'pending' && inst.dueDate?.seconds && new Date(inst.dueDate.seconds * 1000) < new Date()) ? "bg-rose-50 text-rose-600" :
+                      "bg-amber-50 text-amber-600"
                     )}>
-                      {inst.status === 'paid' ? 'Pago' : 'Pendente'}
+                      {inst.status === 'paid' ? 'Pago' : 
+                       (inst.status === 'pending' && inst.dueDate?.seconds && new Date(inst.dueDate.seconds * 1000) < new Date()) ? 'Atrasado' : 
+                       'Pendente'}
                     </span>
                   </td>
                   <td className="px-8 py-5">

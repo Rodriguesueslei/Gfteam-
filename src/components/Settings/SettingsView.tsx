@@ -20,7 +20,7 @@ import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { cn } from '../../utils/formatters';
 import { Logo } from '../ui/Logo';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 
@@ -62,6 +62,12 @@ export const SettingsView = ({ belts, settings, secrets, allData }: SettingsView
     paymentProvider: settings?.paymentProvider || 'None'
   });
 
+  const [isSavingIntegrations, setIsSavingIntegrations] = useState(false);
+  const [gympassForm, setGympassForm] = useState({
+    clientId: secrets?.gympassClientId || '',
+    clientSecret: secrets?.gympassClientSecret || ''
+  });
+
   const { isAdmin } = useAuth();
 
   useEffect(() => {
@@ -71,6 +77,10 @@ export const SettingsView = ({ belts, settings, secrets, allData }: SettingsView
         stripePublicKey: settings?.stripePublicKey || '',
         stripeSecretKey: secrets?.stripeSecretKey || '',
         paymentProvider: settings?.paymentProvider || 'None'
+      });
+      setGympassForm({
+        clientId: secrets?.gympassClientId || '',
+        clientSecret: secrets?.gympassClientSecret || ''
       });
     }
   }, [settings, secrets]);
@@ -152,6 +162,26 @@ export const SettingsView = ({ belts, settings, secrets, allData }: SettingsView
     }
   };
 
+  const handleSaveGympassSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingIntegrations(true);
+    try {
+      const privateData = {
+        gympassClientId: gympassForm.clientId,
+        gympassClientSecret: gympassForm.clientSecret,
+        updatedAt: serverTimestamp()
+      };
+
+      await setDoc(doc(db, 'secret_settings', 'global'), privateData, { merge: true });
+      toast.success("Configurações do Gympass atualizadas!");
+    } catch (error) {
+      console.error("Error saving Gympass settings:", error);
+      toast.error("Erro ao salvar configurações do Gympass.");
+    } finally {
+      setIsSavingIntegrations(false);
+    }
+  };
+
   const handleExportAllData = () => {
     if (!allData) return;
     try {
@@ -196,6 +226,7 @@ export const SettingsView = ({ belts, settings, secrets, allData }: SettingsView
           { id: 'belts', label: 'Faixas', icon: Shield },
           { id: 'logo', label: 'Identidade', icon: Palette },
           { id: 'payments', label: 'Pagamentos', icon: CreditCard },
+          { id: 'integrations', label: 'Integrações', icon: Package },
           { id: 'data', label: 'Dados & Backup', icon: Database }
         ].map(tab => (
           <button 
@@ -350,6 +381,72 @@ export const SettingsView = ({ belts, settings, secrets, allData }: SettingsView
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : (
                   "Salvar Configurações"
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {activeSubTab === 'integrations' && (
+        <div className="max-w-2xl space-y-6">
+          <div className="p-8 bg-white border border-gray-100 rounded-[32px] shadow-sm space-y-8">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-blue-100 rounded-2xl">
+                <Package className="w-6 h-6 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Integração Wellhub (Gympass)</h2>
+                <p className="text-sm text-gray-500">Conecte sua academia ao ecossistema global da Wellhub.</p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSaveGympassSettings} className="space-y-6">
+              <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                <p className="text-xs text-blue-700 leading-relaxed">
+                  Para obter suas chaves de API, acesse o <strong>Portal do Parceiro Wellhub</strong> e solicite acesso às <strong>Partner APIs</strong>.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Client ID (API Key)</label>
+                  <input 
+                    type="text"
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none font-mono text-xs"
+                    placeholder="Seu Client ID fornecido pelo Gympass"
+                    value={gympassForm.clientId}
+                    onChange={e => setGympassForm({...gympassForm, clientId: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Client Secret</label>
+                  <input 
+                    type="password"
+                    className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none font-mono text-xs"
+                    placeholder="Seu Client Secret (Segredo da API)"
+                    value={gympassForm.clientSecret}
+                    onChange={e => setGympassForm({...gympassForm, clientSecret: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 bg-emerald-50 rounded-2xl flex gap-3">
+                <Shield className="w-5 h-5 text-emerald-500 shrink-0" />
+                <p className="text-[10px] text-emerald-700 font-medium leading-relaxed">
+                  Estes dados são sensíveis e ficarão armazenados em um bando de dados isolado e criptografado, acessível apenas por administradores do sistema.
+                </p>
+              </div>
+
+              <button 
+                type="submit" 
+                disabled={isSavingIntegrations}
+                className="w-full py-4 bg-black text-white font-black rounded-2xl hover:bg-gray-800 transition-all uppercase italic shadow-lg active:scale-95 flex items-center justify-center gap-2"
+              >
+                {isSavingIntegrations ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  "Ativar Integração"
                 )}
               </button>
             </form>

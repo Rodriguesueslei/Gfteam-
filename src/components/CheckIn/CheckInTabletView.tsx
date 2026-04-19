@@ -19,7 +19,7 @@ import { db, logout } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Logo } from '../ui/Logo';
 import { cn } from '../../utils/formatters';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import { getFaceDescriptor, loadModels, createFaceMatcher } from '../../services/faceRecognitionService';
 import * as faceapi from 'face-api.js';
@@ -28,18 +28,27 @@ interface CheckInTabletViewProps {
   students: any[];
   classes: any[];
   settings: any;
+  plans: any[];
+  checkIns: any[];
 }
 
-export const CheckInTabletView = ({ students, classes, settings }: CheckInTabletViewProps) => {
+export const CheckInTabletView = ({ students, classes, settings, plans, checkIns }: CheckInTabletViewProps) => {
   const { isCheckInTablet } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: "" });
-  const [mode, setMode] = useState<'selection' | 'manual' | 'facial'>('selection');
+  const [mode, setMode] = useState<'selection' | 'manual' | 'facial' | 'gympass'>('selection');
   const [recentCheckIns, setRecentCheckIns] = useState<any[]>([]);
   const [isModelsLoading, setIsModelsLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState("");
   const [isScanning, setIsScanning] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [selectedClass, setSelectedClass] = useState<any>(null);
+  const [isClassModalOpen, setIsClassModalOpen] = useState(false);
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+  const [pendingStudent, setPendingStudent] = useState<any>(null);
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [gympassToken, setGympassToken] = useState("");
+  const [isValidatingGympass, setIsValidatingGympass] = useState(false);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const faceMatcherRef = React.useRef<faceapi.FaceMatcher | null>(null);
   const detectionIntervalRef = React.useRef<any>(null);
@@ -50,30 +59,17 @@ export const CheckInTabletView = ({ students, classes, settings }: CheckInTablet
   }, []);
 
   useEffect(() => {
-    const allCheckIns: any[] = [];
-    classes.forEach((cls: any) => {
-      if (cls.presence && cls.presence.length > 0) {
-        cls.presence.forEach((studentId: string) => {
-          const student = students.find((s: any) => s.id === studentId);
-          if (student) {
-            allCheckIns.push({
-              id: `${cls.id}-${student.id}`,
-              studentName: student.name,
-              className: cls.name || cls.title || 'Aula',
-              time: cls.startTime,
-              studentPhoto: student.facePhoto
-            });
-          }
-        });
-      }
-    });
+    if (!checkIns || checkIns.length === 0) {
+      setRecentCheckIns([]);
+      return;
+    }
 
-    const sorted = allCheckIns
+    const sorted = [...checkIns]
       .filter(ci => ci.time?.seconds)
       .sort((a, b) => b.time.seconds - a.time.seconds)
       .slice(0, 5);
     setRecentCheckIns(sorted);
-  }, [classes, students]);
+  }, [checkIns]);
 
   useEffect(() => {
     if (mode === 'facial') {
@@ -373,67 +369,186 @@ export const CheckInTabletView = ({ students, classes, settings }: CheckInTablet
     return { label: 'Finalizada', color: 'text-gray-500' };
   };
 
-  const handleCheckIn = async (student: any) => {
-    const now = new Date();
-    const todayPortuguese = getTodayPortuguese();
-
-    const activeClass = classes.find((cls: any) => {
-      if (cls.dayOfWeek !== todayPortuguese && !(cls.daysOfWeek && cls.daysOfWeek.includes(todayPortuguese))) return false;
-      
-      // Handle both string times (HH:mm) and Timestamps
-      let start: Date;
-      let end: Date;
-
-      if (typeof cls.startTime === 'string' && typeof cls.endTime === 'string') {
-        const [startH, startM] = cls.startTime.split(':').map(Number);
-        const [endH, endM] = cls.endTime.split(':').map(Number);
-        
-        start = new Date(now);
-        start.setHours(startH, startM, 0, 0);
-        
-        end = new Date(now);
-        end.setHours(endH, endM, 0, 0);
-      } else if (cls.startTime?.seconds && cls.endTime?.seconds) {
-        start = new Date(cls.startTime.seconds * 1000);
-        end = new Date(cls.endTime.seconds * 1000);
-      } else {
-        return false;
-      }
-
-      const bufferStart = subMinutes(start, 45);
-      const bufferEnd = end;
-      return isWithinInterval(now, { start: bufferStart, end: bufferEnd });
-    });
-
-    if (!activeClass) {
-      setStatus({ type: 'error', message: "Nenhuma aula ativa no momento para check-in." });
-      toast.error("Nenhuma aula ativa no momento.");
-      setTimeout(() => setStatus({ type: null, message: "" }), 5000);
+  const handleGympassValidation = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!gympassToken || gympassToken.length < 5) {
+      toast.error("Por favor, insira um token válido.");
       return;
     }
 
-    const currentPresence = activeClass.presence || [];
-    if (currentPresence.includes(student.id)) {
-      setStatus({ type: 'success', message: `Check-in já realizado para ${student.name}!` });
-    } else {
-      await updateDoc(doc(db, 'classes', activeClass.id), {
-        presence: [...currentPresence, student.id]
+    setIsValidatingGympass(true);
+    try {
+      const response = await fetch('/api/gympass/validate-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: gympassToken })
       });
 
-      await addDoc(collection(db, 'checkins'), {
-        studentId: student.id,
-        studentName: student.name,
-        classId: activeClass.id,
-        className: activeClass.name || activeClass.title || 'Aula',
-        time: Timestamp.now(),
-        source: 'tablet'
-      });
+      const data = await response.json();
 
-      setStatus({ type: 'success', message: `Check-in realizado com sucesso: ${student.name}` });
+      if (!response.ok) {
+        throw new Error(data.error || "Erro ao validar token Wellhub.");
+      }
+
+      if (data.valid) {
+        // Find local student by gympassId
+        const localStudent = students.find(s => s.gympassId === data.student.id);
+        
+        if (localStudent) {
+          toast.success(`Aluno identificado: ${localStudent.name}`);
+          handleCheckIn(localStudent, undefined, true); // Direct check-in after validation
+        } else {
+          setStatus({ 
+            type: 'error', 
+            message: `Gympass ID (${data.student.id}) não vinculado a nenhum aluno local. Vincule no cadastro de alunos.` 
+          });
+          toast.error("ID Gympass não vinculado.");
+        }
+      } else {
+        setStatus({ type: 'error', message: data.message || "Token Wellhub inválido ou expirado." });
+      }
+    } catch (error: any) {
+      console.error("Gympass validation error:", error);
+      setStatus({ type: 'error', message: error.message });
+      toast.error(error.message);
+    } finally {
+      setIsValidatingGympass(false);
+      setGympassToken("");
     }
-    setSearchTerm("");
-    setMode('selection');
-    setTimeout(() => setStatus({ type: null, message: "" }), 5000);
+  };
+
+  const handleCheckIn = async (student: any, targetClasses?: any[], fromGympass: boolean = false) => {
+    const studentToProcess = student || pendingStudent;
+    if (!studentToProcess) return;
+
+    // 1. If no class list provided, try to find current active classes or open selection modal
+    if (!targetClasses) {
+      const now = new Date();
+      const todayPortuguese = getTodayPortuguese();
+
+      // Find all overlapping classes (buffer of 30min before, available until end)
+      const overlappingClasses = classes.filter((cls: any) => {
+        if (cls.dayOfWeek !== todayPortuguese && !(cls.daysOfWeek && cls.daysOfWeek.includes(todayPortuguese))) return false;
+        
+        let start: Date;
+        let end: Date;
+
+        if (typeof cls.startTime === 'string' && typeof cls.endTime === 'string') {
+          const [startH, startM] = cls.startTime.split(':').map(Number);
+          const [endH, endM] = cls.endTime.split(':').map(Number);
+          start = new Date(now);
+          start.setHours(startH, startM, 0, 0);
+          end = new Date(now);
+          end.setHours(endH, endM, 0, 0);
+        } else if (cls.startTime?.seconds && cls.endTime?.seconds) {
+          start = new Date(cls.startTime.seconds * 1000);
+          end = new Date(cls.endTime.seconds * 1000);
+        } else {
+          return false;
+        }
+
+        const bufferStart = subMinutes(start, cls.checkInOffset || 30);
+        const bufferEnd = end;
+        return isWithinInterval(now, { start: bufferStart, end: bufferEnd });
+      });
+
+      if (overlappingClasses.length === 0) {
+        setStatus({ type: 'error', message: "O check-in ainda não abriu para a próxima aula." });
+        toast.error("Fora do horário de check-in.");
+        setTimeout(() => setStatus({ type: null, message: "" }), 5000);
+        return;
+      }
+
+      if (overlappingClasses.length === 1) {
+        targetClasses = [overlappingClasses[0]];
+      } else {
+        // More than one class overlapping, ask to choose (possibly multiple)
+        setPendingStudent(studentToProcess);
+        setSelectedClassIds([]); // Reset selection
+        setIsClassModalOpen(true);
+        return;
+      }
+    }
+
+    setIsCheckingIn(true);
+    try {
+      let successCount = 0;
+      let alreadyPresentCount = 0;
+
+      for (const targetClass of targetClasses) {
+        // Validation: Category Compatibility
+        const classCategories = targetClass.categories || [];
+        if (classCategories.length > 0 && studentToProcess.category) {
+          if (!classCategories.includes(studentToProcess.category)) {
+            continue; // Skip incompatible for multi-selection
+          }
+        }
+
+        // Validation: Modality Compatibility
+        const studentModalities = studentToProcess.modalities || ['Jiu-Jitsu'];
+        const classModality = targetClass.modality || 'Jiu-Jitsu';
+        if (!studentModalities.includes(classModality)) {
+          continue; // Skip incompatible modality
+        }
+
+        // Perform Check-in
+        const currentPresence = targetClass.presence || [];
+        if (currentPresence.includes(studentToProcess.id)) {
+          alreadyPresentCount++;
+        } else {
+          await updateDoc(doc(db, 'classes', targetClass.id), {
+            presence: [...currentPresence, studentToProcess.id]
+          });
+
+          await addDoc(collection(db, 'checkins'), {
+            studentId: studentToProcess.id,
+            studentName: studentToProcess.name,
+            classId: targetClass.id,
+            className: targetClass.name || targetClass.title || 'Aula',
+            modality: targetClass.modality || 'Jiu-Jitsu',
+            time: Timestamp.now(),
+            source: 'tablet',
+            isGympass: fromGympass
+          });
+
+          // If from Gympass, notify their API
+          if (fromGympass && studentToProcess.gympassId) {
+            try {
+              await fetch('/api/gympass/checkin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                  gympassId: studentToProcess.gympassId,
+                  classId: targetClass.id
+                })
+              });
+            } catch (err) {
+              console.error("Failed to notify Gympass about check-in:", err);
+            }
+          }
+
+          successCount++;
+        }
+      }
+
+      if (successCount > 0) {
+        setStatus({ type: 'success', message: `${successCount} check-ins realizados: ${studentToProcess.name}` });
+      } else if (alreadyPresentCount > 0) {
+        setStatus({ type: 'success', message: `Check-in já realizado para ${studentToProcess.name}` });
+      } else {
+        setStatus({ type: 'error', message: "Nenhuma aula compatível selecionada." });
+      }
+    } catch (error) {
+      console.error("Check-in error:", error);
+      toast.error("Erro ao realizar check-in.");
+    } finally {
+      setIsCheckingIn(false);
+      setSearchTerm("");
+      setMode('selection');
+      setPendingStudent(null);
+      setIsClassModalOpen(false);
+      setTimeout(() => setStatus({ type: null, message: "" }), 5000);
+    }
   };
 
   const filteredStudents = students.filter((s: any) => 
@@ -538,25 +653,35 @@ export const CheckInTabletView = ({ students, classes, settings }: CheckInTablet
 
           {mode === 'selection' && (
             <div className="flex flex-col gap-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
                 <button 
                   onClick={() => setMode('facial')}
                   className="group p-8 bg-white/5 hover:bg-white/10 border border-white/10 rounded-[32px] transition-all text-center space-y-4"
                 >
-                  <div className="w-16 h-16 bg-emerald-500/20 rounded-2xl flex items-center justify-center mx-auto">
+                  <div className="w-16 h-16 bg-emerald-500/20 rounded-2xl flex items-center justify-center mx-auto transition-transform group-hover:scale-110">
                     <Camera className="w-8 h-8 text-emerald-500" />
                   </div>
-                  <h3 className="text-xl font-bold text-white">Reconhecimento Facial</h3>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-widest">Biometria Facial</h3>
+                </button>
+
+                <button 
+                  onClick={() => setMode('gympass')}
+                  className="group p-8 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded-[32px] transition-all text-center space-y-4"
+                >
+                  <div className="w-16 h-16 bg-emerald-400 rounded-2xl flex items-center justify-center mx-auto transition-transform group-hover:scale-110 shadow-[0_0_20px_rgba(52,211,153,0.3)]">
+                    <img src="https://images.ctfassets.net/8u9z6yovhbmv/7L8f9XyB8I0yM6aKEM0KmA/807e3e4a2d39803131c93a8d1e4eb4d0/Gympass_Logo.png" className="w-10 h-10 object-contain brightness-0" alt="Gympass" />
+                  </div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-widest">Check-in Wellhub</h3>
                 </button>
 
                 <button 
                   onClick={() => setMode('manual')}
                   className="group p-8 bg-white/5 hover:bg-white/10 border border-white/10 rounded-[32px] transition-all text-center space-y-4"
                 >
-                  <div className="w-16 h-16 bg-blue-500/20 rounded-2xl flex items-center justify-center mx-auto">
-                    <Search className="w-8 h-8 text-blue-500" />
+                  <div className="w-16 h-16 bg-gray-500/20 rounded-2xl flex items-center justify-center mx-auto transition-transform group-hover:scale-110">
+                    <Search className="w-8 h-8 text-gray-400" />
                   </div>
-                  <h3 className="text-xl font-bold text-white">Busca Manual</h3>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-widest">Busca Manual</h3>
                 </button>
               </div>
 
@@ -588,6 +713,61 @@ export const CheckInTabletView = ({ students, classes, settings }: CheckInTablet
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {mode === 'gympass' && (
+            <div className="bg-white/5 border border-white/10 rounded-[32px] p-8 space-y-8 animate-in zoom-in-95 duration-300">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 bg-emerald-400 rounded-xl flex items-center justify-center">
+                    <img src="https://images.ctfassets.net/8u9z6yovhbmv/7L8f9XyB8I0yM6aKEM0KmA/807e3e4a2d39803131c93a8d1e4eb4d0/Gympass_Logo.png" className="w-6 h-6 object-contain brightness-0" alt="" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white uppercase italic">Validar Wellhub</h3>
+                    <p className="text-xs text-gray-500 font-medium tracking-wider">INSIRA SEU TOKEN DO APLICATIVO</p>
+                  </div>
+                </div>
+                <button onClick={() => setMode('selection')} className="p-2 text-gray-400 hover:text-white rounded-full hover:bg-white/5 transition-all">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <form onSubmit={handleGympassValidation} className="space-y-6">
+                <div className="relative">
+                  <input 
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    autoFocus
+                    placeholder="DIGITE O TOKEN (EX: 1234567)"
+                    value={gympassToken}
+                    onChange={(e) => setGympassToken(e.target.value.replace(/\D/g, ''))}
+                    className="w-full bg-white/10 border-2 border-white/10 rounded-2xl py-6 px-6 text-white text-3xl font-mono text-center tracking-[0.5em] focus:ring-4 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all outline-none"
+                    maxLength={12}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-4">
+                  <button 
+                    type="submit"
+                    disabled={isValidatingGympass || !gympassToken}
+                    className="w-full py-5 bg-emerald-500 text-black font-black text-lg rounded-2xl hover:bg-emerald-400 transition-all uppercase italic shadow-xl shadow-emerald-500/20 active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-3"
+                  >
+                    {isValidatingGympass ? (
+                      <>
+                        <RefreshCw className="w-6 h-6 animate-spin" />
+                        Validando...
+                      </>
+                    ) : (
+                      "Confirmar Token"
+                    )}
+                  </button>
+                  <p className="text-[10px] text-gray-500 text-center font-bold uppercase tracking-widest px-8 leading-relaxed">
+                    AO CONFIRMAR, O SISTEMA IRÁ VALIDAR SUA ELEGIBILIDADE DIRETAMENTE COM A PLATAFORMA WELLHUB.
+                  </p>
+                </div>
+              </form>
             </div>
           )}
 
@@ -760,8 +940,172 @@ export const CheckInTabletView = ({ students, classes, settings }: CheckInTablet
             </div>
           )}
         </div>
-
       </div>
+
+      {/* Modal de Escolha de Aula */}
+      <AnimatePresence>
+        {isClassModalOpen && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              exit={{ opacity: 0 }} 
+              className="absolute inset-0 bg-black/90 backdrop-blur-md"
+              onClick={() => setIsClassModalOpen(false)}
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-lg bg-[#0a0a0a] border border-white/10 rounded-[40px] p-8 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              <div className="flex items-center justify-between mb-8 shrink-0">
+                <div>
+                  <h3 className="text-2xl font-black text-white italic uppercase tracking-tighter">Escolha suas Aulas</h3>
+                  <p className="text-emerald-400 text-xs font-bold uppercase tracking-widest mt-1">Olá, {pendingStudent?.name}</p>
+                </div>
+                <button onClick={() => setIsClassModalOpen(false)} className="text-gray-400 hover:text-white p-2">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="space-y-4 overflow-y-auto pr-2 custom-scrollbar">
+                {activeAndUpcomingClasses.map((cls: any) => {
+                  const classStatus = getClassStatus(cls);
+                  const isCompatible = !cls.categories || cls.categories.length === 0 || cls.categories.includes(pendingStudent?.category);
+                  const isModalityCompatible = (pendingStudent?.modalities || ['Jiu-Jitsu']).includes(cls.modality || 'Jiu-Jitsu');
+                  
+                  // Plan Check
+                  const studentPlan = plans.find(p => p.id === pendingStudent?.planId);
+                  const isModalityAllowedByPlan = !studentPlan || 
+                    (studentPlan.allowedModalities || ['Jiu-Jitsu']).includes(cls.modality || 'Jiu-Jitsu');
+
+                  const isSelected = selectedClassIds.includes(cls.id);
+                  const alreadyCheckedIn = cls.presence?.includes(pendingStudent?.id);
+                  const finalCompatibility = isCompatible && isModalityCompatible && isModalityAllowedByPlan;
+                  
+                  return (
+                    <button
+                      key={cls.id}
+                      disabled={!finalCompatibility || alreadyCheckedIn}
+                      onClick={() => {
+                        if (isSelected) {
+                          setSelectedClassIds(prev => prev.filter(id => id !== cls.id));
+                        } else {
+                          setSelectedClassIds(prev => [...prev, cls.id]);
+                        }
+                      }}
+                      className={cn(
+                        "w-full p-6 border rounded-3xl text-left transition-all relative group overflow-hidden",
+                        alreadyCheckedIn 
+                          ? "bg-blue-500/5 border-blue-500/30 opacity-70 cursor-not-allowed"
+                          : !finalCompatibility
+                            ? "bg-white/2 opacity-40 border-white/5 cursor-not-allowed grayscale"
+                            : isSelected 
+                              ? "bg-emerald-500/10 border-emerald-500 shadow-lg shadow-emerald-500/10" 
+                              : "bg-white/5 border-white/10 hover:border-emerald-500/50 hover:bg-emerald-500/5"
+                      )}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-black uppercase text-gray-500 tracking-widest">
+                          {typeof cls.startTime === 'string' ? cls.startTime : format(new Date(cls.startTime.seconds * 1000), 'HH:mm')}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          {alreadyCheckedIn && (
+                            <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center gap-1">
+                              <CheckCircle2 className="w-2 h-2" />
+                              Já Presente
+                            </span>
+                          )}
+                          {isSelected && (
+                            <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-500 text-black">Selecionado</span>
+                          )}
+                          <span className={cn("text-[10px] font-bold uppercase", classStatus.color)}>
+                            {classStatus.label}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      <h4 className="text-white font-bold text-lg uppercase italic mb-1">{cls.title || cls.name}</h4>
+                      
+                      <div className="flex flex-wrap gap-2">
+                        <span className={cn(
+                          "text-[8px] font-black uppercase px-2 py-0.5 rounded-full border",
+                          cls.modality === 'Muay Thai' ? "bg-rose-500 text-black border-rose-500" : "bg-blue-500 text-white border-blue-500"
+                        )}>
+                          {cls.modality || 'Jiu-Jitsu'}
+                        </span>
+                        {cls.categories && cls.categories.map((cat: string) => (
+                          <span key={cat} className={cn(
+                            "text-[8px] font-black uppercase px-2 py-0.5 rounded-full border",
+                            cat === pendingStudent?.category 
+                              ? "bg-emerald-500 text-black border-emerald-500" 
+                              : "text-gray-500 border-white/10"
+                          )}>
+                            {cat}
+                          </span>
+                        ))}
+                      </div>
+
+                      {!isCompatible && !alreadyCheckedIn && (
+                        <div className="mt-4 flex items-center gap-2 text-rose-400">
+                          <AlertCircle className="w-4 h-4" />
+                          <span className="text-[10px] font-bold uppercase">Categoria incompatível ({pendingStudent?.category})</span>
+                        </div>
+                      )}
+
+                      {!isModalityCompatible && isCompatible && !alreadyCheckedIn && (
+                        <div className="mt-4 flex items-center gap-2 text-rose-400">
+                          <AlertCircle className="w-4 h-4" />
+                          <span className="text-[10px] font-bold uppercase">Você não está matriculado nesta modalidade ({cls.modality || 'Jiu-Jitsu'})</span>
+                        </div>
+                      )}
+
+                      {!isModalityAllowedByPlan && isModalityCompatible && isCompatible && !alreadyCheckedIn && (
+                        <div className="mt-4 flex items-center gap-2 text-rose-400">
+                          <AlertCircle className="w-4 h-4" />
+                          <span className="text-[10px] font-bold uppercase">Seu plano não inclui esta modalidade ({cls.modality || 'Jiu-Jitsu'})</span>
+                        </div>
+                      )}
+
+                      {alreadyCheckedIn && (
+                        <div className="mt-4 flex items-center gap-2 text-blue-400">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span className="text-[10px] font-bold uppercase">Você já está na lista de presença</span>
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-8 pt-6 border-t border-white/10 shrink-0">
+                <button
+                  disabled={selectedClassIds.length === 0 || isCheckingIn}
+                  onClick={() => {
+                    const targetClasses = classes.filter(cls => selectedClassIds.includes(cls.id));
+                    handleCheckIn(pendingStudent, targetClasses);
+                  }}
+                  className={cn(
+                    "w-full py-4 border-2 font-black rounded-2xl transition-all uppercase italic flex items-center justify-center gap-3",
+                    selectedClassIds.length > 0 
+                      ? "bg-emerald-500 border-emerald-500 text-black shadow-xl shadow-emerald-500/20 active:scale-95" 
+                      : "bg-transparent border-white/10 text-gray-500 grayscale cursor-not-allowed"
+                  )}
+                >
+                  {isCheckingIn ? (
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                  ) : (
+                    <>
+                      Confirmar {selectedClassIds.length > 1 ? `${selectedClassIds.length} Check-ins` : 'Check-in'}
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

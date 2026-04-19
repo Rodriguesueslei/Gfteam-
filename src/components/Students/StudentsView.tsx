@@ -24,7 +24,10 @@ import {
   FileText,
   MessageSquare,
   User,
-  Users
+  Users,
+  DollarSign,
+  CreditCard,
+  ShoppingCart
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -34,7 +37,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { cn, formatCurrency, getBeltColor } from '../../utils/formatters';
 import { handleFirestoreError, OperationType } from '../../utils/errorHandlers';
 import toast from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { getFaceDescriptor, loadModels } from '../../services/faceRecognitionService';
 
 // Simple mask function
@@ -46,6 +49,13 @@ const maskPhone = (value: string) => {
     .replace(/(-\d{4})\d+?$/, '$1');
 };
 
+const maskCEP = (value: string) => {
+  return value
+    .replace(/\D/g, '')
+    .replace(/(\d{5})(\d)/, '$1-$2')
+    .replace(/(-\d{3})\d+?$/, '$1');
+};
+
 interface StudentsViewProps {
   belts: any[];
   students: any[];
@@ -54,14 +64,17 @@ interface StudentsViewProps {
   classes: any[];
   evaluations: any[];
   graduations: any[];
+  payments: any[];
+  installments: any[];
 }
 
-export const StudentsView = ({ belts, students, instructors, plans, classes, evaluations, graduations }: StudentsViewProps) => {
+export const StudentsView = ({ belts, students, instructors, plans, classes, evaluations, graduations, payments, installments }: StudentsViewProps) => {
   const [searchTerm, setSearchTerm] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<any>(null);
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
+  const [modalityFilter, setModalityFilter] = useState("Todas");
   const [activeSubTab, setActiveSubTab] = useState('info');
   const [isEvaluationModalOpen, setIsEvaluationModalOpen] = useState(false);
   const [isGraduationModalOpen, setIsGraduationModalOpen] = useState(false);
@@ -83,8 +96,12 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
     name: '',
     email: '',
     phone: '',
+    messagePhone: '',
     birthDate: '',
+    cep: '',
     address: '',
+    occupation: '',
+    education: '',
     belt: 'White',
     stripes: 0,
     status: 'Active',
@@ -94,12 +111,46 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
     guardianDoc: '',
     guardianEmail: '',
     guardianPhone: '',
+    guardianOccupation: '',
     facialId: '',
     monthlyFee: 150,
     planId: '',
+    gympassId: '',
     facePhoto: null as string | null,
-    faceDescriptor: null as string | null
+    faceDescriptor: null as string | null,
+    modalities: ['Jiu-Jitsu'] as string[],
+    muayThaiGraduation: 'Branca'
   });
+
+  const muayThaiGraduations = [
+    'Branca', 'Branca Ponta Amarela', 'Amarela', 'Amarela Ponta Laranja',
+    'Laranja', 'Laranja Ponta Verde', 'Verde', 'Verde Ponta Azul',
+    'Azul', 'Azul Ponta Roxa', 'Roxa', 'Roxa Ponta Marrom',
+    'Marrom', 'Marrom Ponta Preta', 'Preta'
+  ];
+
+  const handleCEPLookup = async (cep: string) => {
+    const cleanCEP = cep.replace(/\D/g, '');
+    if (cleanCEP.length !== 8) return;
+
+    try {
+      const response = await fetch(`https://viacep.com.br/ws/${cleanCEP}/json/`);
+      const data = await response.json();
+      
+      if (!data.erro) {
+        setFormData(prev => ({
+          ...prev,
+          address: `${data.logradouro}${data.bairro ? `, ${data.bairro}` : ''}${data.localidade ? ` - ${data.localidade}` : ''}${data.uf ? `/${data.uf}` : ''}`
+        }));
+        toast.success("Endereço preenchido automaticamente!");
+      } else {
+        toast.error("CEP não encontrado.");
+      }
+    } catch (error) {
+      console.error("Erro ao buscar CEP:", error);
+      toast.error("Erro ao buscar CEP.");
+    }
+  };
 
   const isMinor = useMemo(() => {
     if (!formData.birthDate) return false;
@@ -254,7 +305,8 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
     const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          s.email.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesArchived = showArchived ? s.status === 'Archived' : s.status !== 'Archived';
-    return matchesSearch && matchesArchived;
+    const matchesModality = modalityFilter === "Todas" || (s.modalities && s.modalities.includes(modalityFilter));
+    return matchesSearch && matchesArchived && matchesModality;
   });
 
   const handleSaveEvaluation = async (e: React.FormEvent) => {
@@ -284,24 +336,25 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
   }, [selectedStudent, evaluations]);
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
-      <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-        <div>
-          <h1 className="text-4xl font-black text-black italic uppercase tracking-tighter">Alunos</h1>
-          <p className="text-gray-500 font-medium">Gerencie os membros da sua academia.</p>
+    <div className="space-y-6 sm:space-y-8 animate-in fade-in transition-all duration-500">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-2">
+        <div className="space-y-1">
+          <h1 className="text-3xl sm:text-4xl font-black text-black dark:text-white italic uppercase tracking-tighter">Alunos</h1>
+          <p className="text-xs sm:text-sm text-gray-500 font-medium">Gerencie o cadastro e a evolução dos seus atletas.</p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3">
           <button 
             onClick={() => setShowArchived(!showArchived)}
             className={cn(
-              "px-4 py-2 rounded-xl text-xs font-bold transition-all border",
+              "px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border",
               showArchived 
                 ? "bg-rose-50 border-rose-200 text-rose-600" 
-                : "bg-white border-gray-200 text-gray-500 hover:bg-gray-50"
+                : "bg-white border-gray-100 dark:bg-white/5 dark:border-white/10 text-gray-500 hover:bg-gray-50"
             )}
           >
-            {showArchived ? 'Ver Ativos' : 'Ver Arquivados'}
+            {showArchived ? 'Ver Ativos' : 'Arquivados'}
           </button>
+          
           {isAdmin && (
             <button 
               onClick={() => { 
@@ -310,8 +363,12 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                   name: '',
                   email: '',
                   phone: '',
+                  messagePhone: '',
                   birthDate: '',
+                  cep: '',
                   address: '',
+                  occupation: '',
+                  education: '',
                   belt: 'White',
                   stripes: 0,
                   status: 'Active',
@@ -320,13 +377,15 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                   guardianDoc: '',
                   guardianEmail: '',
                   guardianPhone: '',
+                  guardianOccupation: '',
                   facialId: '',
                   monthlyFee: 150,
-                  planId: ''
-                });
+                  planId: '',
+                  gympassId: ''
+                } as any);
                 setIsModalOpen(true); 
               }}
-              className="flex items-center justify-center px-6 py-3 text-sm font-black text-white bg-black rounded-xl hover:bg-gray-800 transition-all shadow-lg uppercase italic tracking-wider"
+              className="flex-1 sm:flex-none flex items-center justify-center px-6 py-3 text-sm font-black text-white bg-black rounded-xl hover:bg-gray-800 transition-all shadow-lg uppercase italic tracking-wider whitespace-nowrap"
             >
               <Plus className="w-4 h-4 mr-2" />
               Novo Aluno
@@ -336,15 +395,33 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
       </header>
 
       <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-[32px]">
-        <div className="relative mb-8">
-          <Search className="absolute w-5 h-5 text-gray-400 left-4 top-1/2 -translate-y-1/2" />
-          <input 
-            type="text" 
-            placeholder="Buscar por nome ou email..." 
-            className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 transition-all outline-none"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div className="flex flex-col md:flex-row gap-4 mb-8">
+          <div className="relative flex-1">
+            <Search className="absolute w-5 h-5 text-gray-400 left-4 top-1/2 -translate-y-1/2" />
+            <input 
+              type="text" 
+              placeholder="Buscar por nome ou email..." 
+              className="w-full pl-12 pr-4 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 transition-all outline-none"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-2 shrink-0 overflow-x-auto pb-2 md:pb-0 scrollbar-none">
+            {['Todas', 'Jiu-Jitsu', 'Muay Thai'].map((mod) => (
+              <button
+                key={mod}
+                onClick={() => setModalityFilter(mod)}
+                className={cn(
+                  "px-6 py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all border whitespace-nowrap",
+                  modalityFilter === mod
+                    ? "bg-black text-white border-black"
+                    : "bg-gray-50 text-gray-500 border-transparent hover:bg-gray-100"
+                )}
+              >
+                {mod}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -368,9 +445,19 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                 </div>
                 <div>
                   <h3 className="font-bold text-gray-900 leading-tight">{student.name}</h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getBeltColor(student.belt, belts) }} />
-                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">{student.belt}</span>
+                  <div className="flex flex-col gap-1 mt-1">
+                    {(student.modalities || ['Jiu-Jitsu']).includes('Jiu-Jitsu') && (
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: getBeltColor(student.belt, belts) }} />
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">BJJ: {student.belt}</span>
+                      </div>
+                    )}
+                    {(student.modalities || []).includes('Muay Thai') && (
+                      <div className="flex items-center gap-2">
+                        <div className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">MT: {student.muayThaiGraduation || 'Branca'}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -392,6 +479,13 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                   className="flex-1 py-2 bg-black dark:bg-white dark:text-black text-white text-xs font-bold rounded-xl hover:bg-gray-800 dark:hover:bg-gray-200 transition-all"
                 >
                   Detalhes
+                </button>
+                <button 
+                  onClick={() => { setSelectedStudent(student); setActiveSubTab('financeiro'); }}
+                  className="px-4 py-2 bg-emerald-50 text-emerald-600 text-xs font-bold rounded-xl hover:bg-emerald-100 transition-all flex items-center gap-2"
+                >
+                  <DollarSign className="w-3 h-3" />
+                  Histórico
                 </button>
                 {(isAdmin || isReceptionist) && (
                   <>
@@ -443,9 +537,25 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                     </div>
                     <div>
                       <h2 className="text-3xl font-black text-black italic uppercase tracking-tighter leading-tight">{selectedStudent.name}</h2>
-                      <div className="flex items-center gap-2 mt-1">
-                        <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getBeltColor(selectedStudent.belt, belts) }} />
-                        <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">{selectedStudent.belt} • {selectedStudent.stripes} Graus</span>
+                      <div className="flex flex-wrap gap-4 mt-2">
+                        {(selectedStudent.modalities || ['Jiu-Jitsu']).includes('Jiu-Jitsu') && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full" style={{ backgroundColor: getBeltColor(selectedStudent.belt, belts) }} />
+                            <div className="flex flex-col">
+                              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">Jiu-Jitsu</span>
+                              <span className="text-xs font-bold text-gray-900">{selectedStudent.belt} • {selectedStudent.stripes} Graus</span>
+                            </div>
+                          </div>
+                        )}
+                        {(selectedStudent.modalities || []).includes('Muay Thai') && (
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-rose-500" />
+                            <div className="flex flex-col">
+                              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest leading-none">Muay Thai</span>
+                              <span className="text-xs font-bold text-gray-900">{selectedStudent.muayThaiGraduation || 'Branca'}</span>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -482,6 +592,15 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                   >
                     Graduações
                   </button>
+                  <button 
+                    onClick={() => setActiveSubTab('financeiro')}
+                    className={cn(
+                      "px-4 py-2 rounded-xl font-bold text-sm transition-all",
+                      activeSubTab === 'financeiro' ? "bg-black text-white" : "text-gray-400 hover:bg-gray-50"
+                    )}
+                  >
+                    Financeiro
+                  </button>
                 </div>
 
                 {activeSubTab === 'info' ? (
@@ -516,19 +635,48 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                             </div>
                             {selectedStudent.phone}
                           </div>
+                          {selectedStudent.messagePhone && (
+                            <div className="flex items-center gap-3 text-sm text-gray-600">
+                              <div className="w-8 h-8 rounded-lg bg-gray-50 flex items-center justify-center">
+                                <MessageSquare className="w-4 h-4" />
+                              </div>
+                              Recados: {selectedStudent.messagePhone}
+                            </div>
+                          )}
                         </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Escolaridade</h4>
+                          <p className="text-sm text-gray-600">{selectedStudent.education || 'Não informado'}</p>
+                        </div>
+                        {selectedStudent.occupation && (
+                          <div>
+                            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Profissão</h4>
+                            <p className="text-sm text-gray-600">{selectedStudent.occupation}</p>
+                          </div>
+                        )}
                       </div>
 
                       <div>
                         <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Endereço</h4>
-                        <p className="text-sm text-gray-600">{selectedStudent.address || 'Não informado'}</p>
+                        <p className="text-sm text-gray-600">
+                          {selectedStudent.address || 'Não informado'}
+                          {selectedStudent.cep && ` - CEP: ${selectedStudent.cep}`}
+                        </p>
                       </div>
 
-                      {selectedStudent.category === 'Kids' && (
+                      {selectedStudent.guardianName && (
                         <div className="p-4 bg-blue-50 rounded-2xl border border-blue-100">
                           <h4 className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">Responsável</h4>
-                          <p className="text-sm font-bold text-blue-900">{selectedStudent.guardianName}</p>
-                          <p className="text-xs text-blue-700">{selectedStudent.guardianPhone}</p>
+                          <div className="space-y-1">
+                            <p className="text-sm font-bold text-blue-900">{selectedStudent.guardianName}</p>
+                            <p className="text-xs text-blue-700">{selectedStudent.guardianPhone}</p>
+                            {selectedStudent.guardianOccupation && (
+                              <p className="text-[10px] text-blue-600 font-medium uppercase tracking-wider">Profissão: {selectedStudent.guardianOccupation}</p>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -657,6 +805,104 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                     </div>
                   </div>
                 )}
+
+                {activeSubTab === 'financeiro' && (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="p-5 bg-emerald-50 rounded-[28px] border border-emerald-100/50">
+                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Pagamentos Realizados</p>
+                        <p className="text-2xl font-black text-emerald-700 italic tracking-tighter">
+                          {formatCurrency(payments.filter(p => p.studentId === selectedStudent.id && (p.status === 'Paid' || p.status === 'paid')).reduce((acc, curr) => acc + Number(curr.amount), 0))}
+                        </p>
+                      </div>
+                      <div className="p-5 bg-rose-50 rounded-[28px] border border-rose-100/50">
+                        <p className="text-[10px] font-black text-rose-600 uppercase tracking-widest mb-1">Pendências/Atrasos</p>
+                        <p className="text-2xl font-black text-rose-700 italic tracking-tighter">
+                          {formatCurrency(
+                            payments.filter(p => p.studentId === selectedStudent.id && (p.status === 'Pending' || p.status === 'pending')).reduce((acc, curr) => acc + Number(curr.amount), 0) +
+                            installments.filter(i => i.studentId === selectedStudent.id && i.status === 'pending').reduce((acc, curr) => acc + Number(curr.amount), 0)
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2">Histórico de Mensalidades</h4>
+                      <div className="space-y-2">
+                        {payments.filter(p => p.studentId === selectedStudent.id).length > 0 ? (
+                          payments
+                            .filter(p => p.studentId === selectedStudent.id)
+                            .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+                            .map(pay => (
+                              <div key={pay.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-400 shadow-sm">
+                                    <CreditCard className="w-4 h-4" />
+                                  </div>
+                                  <div>
+                                    <p className="text-sm font-bold text-gray-900">{pay.period}</p>
+                                    <p className="text-[10px] text-gray-400 font-bold uppercase">{pay.planName || 'Plano Personalizado'} • {pay.method}</p>
+                                  </div>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm font-black text-gray-900">{formatCurrency(pay.amount)}</p>
+                                  <span className={cn(
+                                    "text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-full",
+                                    (pay.status === 'Paid' || pay.status === 'paid') ? "bg-emerald-100 text-emerald-600" : "bg-rose-100 text-rose-600"
+                                  )}>
+                                    {(pay.status === 'Paid' || pay.status === 'paid') ? 'Pago' : 'Pendente'}
+                                  </span>
+                                </div>
+                              </div>
+                            ))
+                        ) : (
+                          <p className="text-xs text-gray-400 italic text-center py-4">Nenhuma mensalidade registrada.</p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-2">Parcelas de Vendas (Estoque)</h4>
+                      <div className="space-y-2">
+                        {installments.filter(i => i.studentId === selectedStudent.id).length > 0 ? (
+                          installments
+                            .filter(i => i.studentId === selectedStudent.id)
+                            .sort((a, b) => (a.dueDate?.seconds || 0) - (b.dueDate?.seconds || 0))
+                            .map(inst => {
+                              const isOverdue = inst.status === 'pending' && inst.dueDate?.seconds && new Date(inst.dueDate.seconds * 1000) < new Date();
+                              return (
+                                <div key={inst.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                                  <div className="flex items-center gap-3">
+                                    <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-gray-400 shadow-sm">
+                                      <ShoppingCart className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-bold text-gray-900">{inst.productName}</p>
+                                      <p className="text-[10px] text-gray-400 font-bold uppercase">
+                                        Vencimento: {inst.dueDate?.seconds ? format(new Date(inst.dueDate.seconds * 1000), 'dd/MM/yyyy') : 'N/A'} • {inst.installmentNumber}/{inst.totalInstallments}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <p className="text-sm font-black text-gray-900">{formatCurrency(inst.amount)}</p>
+                                    <span className={cn(
+                                      "text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-full",
+                                      inst.status === 'paid' ? "bg-emerald-100 text-emerald-600" : 
+                                      isOverdue ? "bg-rose-100 text-rose-600" : "bg-amber-100 text-amber-600"
+                                    )}>
+                                      {inst.status === 'paid' ? 'Pago' : isOverdue ? 'Atrasado' : 'Pendente'}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })
+                        ) : (
+                          <p className="text-xs text-gray-400 italic text-center py-4">Nenhuma parcela registrada.</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>
@@ -760,10 +1006,10 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               className="relative w-full max-w-2xl bg-white rounded-[40px] shadow-2xl overflow-hidden"
             >
-              <div className="p-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
+              <div className="p-6 sm:p-8 max-h-[90vh] overflow-y-auto custom-scrollbar">
                 <div className="flex items-center justify-between mb-8">
                   <div>
-                    <h2 className="text-3xl font-black text-black italic uppercase tracking-tighter">
+                    <h2 className="text-2xl sm:text-3xl font-black text-black italic uppercase tracking-tighter">
                       {editingStudent ? 'Editar Aluno' : 'Novo Aluno'}
                     </h2>
                     <p className="text-gray-500 font-medium">Preencha os dados do membro.</p>
@@ -796,6 +1042,16 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                       />
                     </div>
                     <div className="space-y-2">
+                       <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Gympass ID (Opcional)</label>
+                       <input 
+                        type="text" 
+                        placeholder="Ex: 000123456"
+                        className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all"
+                        value={formData.gympassId}
+                        onChange={(e) => setFormData({ ...formData, gympassId: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
                       <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Telefone</label>
                       <input 
                         type="text" 
@@ -805,6 +1061,71 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                       />
                     </div>
                     <div className="space-y-2">
+                       <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Telefone de Recados</label>
+                       <input 
+                        type="text" 
+                        className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all"
+                        value={formData.messagePhone}
+                        onChange={(e) => setFormData({ ...formData, messagePhone: maskPhone(e.target.value) })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">CEP</label>
+                      <input 
+                        type="text" 
+                        placeholder="00000-000"
+                        className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all"
+                        value={formData.cep}
+                        onChange={(e) => {
+                          const val = maskCEP(e.target.value);
+                          setFormData({ ...formData, cep: val });
+                          if (val.replace(/\D/g, '').length === 8) {
+                            handleCEPLookup(val);
+                          }
+                        }}
+                        onBlur={(e) => handleCEPLookup(e.target.value)}
+                      />
+                    </div>
+                    <div className="md:col-span-2 space-y-2">
+                      <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Endereço Completo</label>
+                      <input 
+                        required
+                        type="text" 
+                        placeholder="Rua, Número, Bairro, Cidade/UF"
+                        className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all"
+                        value={formData.address}
+                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Escolaridade</label>
+                      <select 
+                        className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all appearance-none"
+                        value={formData.education}
+                        onChange={(e) => setFormData({ ...formData, education: e.target.value })}
+                      >
+                        <option value="">Selecione</option>
+                        <option value="Ensino Fundamental Incompleto">Ensino Fundamental Incompleto</option>
+                        <option value="Ensino Fundamental Completo">Ensino Fundamental Completo</option>
+                        <option value="Ensino Médio Incompleto">Ensino Médio Incompleto</option>
+                        <option value="Ensino Médio Completo">Ensino Médio Completo</option>
+                        <option value="Ensino Superior Incompleto">Ensino Superior Incompleto</option>
+                        <option value="Ensino Superior Completo">Ensino Superior Completo</option>
+                        <option value="Pós-graduação">Pós-graduação</option>
+                      </select>
+                    </div>
+                    {!isMinor && (
+                      <div className="space-y-2">
+                        <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Profissão</label>
+                        <input 
+                          type="text" 
+                          className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all"
+                          value={formData.occupation}
+                          onChange={(e) => setFormData({ ...formData, occupation: e.target.value })}
+                        />
+                      </div>
+                    )}
+                    <div className="space-y-2">
                       <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Data de Nascimento</label>
                       <input 
                         type="date" 
@@ -813,28 +1134,78 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                         onChange={(e) => setFormData({ ...formData, birthDate: e.target.value })}
                       />
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Faixa Atual</label>
-                      <select 
-                        className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all appearance-none"
-                        value={formData.belt}
-                        onChange={(e) => setFormData({ ...formData, belt: e.target.value })}
-                      >
-                        {belts.map(b => (
-                          <option key={b.id} value={b.name}>{b.name}</option>
-                        ))}
-                      </select>
+                    <div className="md:col-span-2 space-y-4">
+                      <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Modalidades Pratícadas</label>
+                      <div className="flex flex-wrap gap-3">
+                        {['Jiu-Jitsu', 'Muay Thai'].map(mod => {
+                          const isSelected = (formData.modalities || []).includes(mod);
+                          return (
+                            <button
+                              key={mod}
+                              type="button"
+                              onClick={() => {
+                                const current = formData.modalities || [];
+                                const next = isSelected 
+                                  ? current.filter(m => m !== mod)
+                                  : [...current, mod];
+                                if (next.length === 0) return; // Must have at least one
+                                setFormData({ ...formData, modalities: next });
+                              }}
+                              className={cn(
+                                "px-6 py-3 rounded-2xl text-sm font-bold transition-all border-2",
+                                isSelected 
+                                  ? "bg-black text-white border-black shadow-lg" 
+                                  : "bg-white text-gray-400 border-gray-100 hover:border-gray-200"
+                              )}
+                            >
+                              {mod}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div className="space-y-2">
-                      <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Graus</label>
-                      <input 
-                        type="number" 
-                        min="0" max="4"
-                        className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all"
-                        value={formData.stripes}
-                        onChange={(e) => setFormData({ ...formData, stripes: parseInt(e.target.value) })}
-                      />
-                    </div>
+
+                    {(formData.modalities || []).includes('Jiu-Jitsu') && (
+                      <>
+                        <div className="space-y-2">
+                          <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Faixa Jiu-Jitsu</label>
+                          <select 
+                            className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all appearance-none"
+                            value={formData.belt}
+                            onChange={(e) => setFormData({ ...formData, belt: e.target.value })}
+                          >
+                            {belts.map(b => (
+                              <option key={b.id} value={b.name}>{b.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Graus (Jiu-Jitsu)</label>
+                          <input 
+                            type="number" 
+                            min="0" max="4"
+                            className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all"
+                            value={formData.stripes}
+                            onChange={(e) => setFormData({ ...formData, stripes: parseInt(e.target.value) })}
+                          />
+                        </div>
+                      </>
+                    )}
+
+                    {(formData.modalities || []).includes('Muay Thai') && (
+                      <div className="space-y-2 md:col-span-2">
+                        <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Graduação Muay Thai (Kruang)</label>
+                        <select 
+                          className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all appearance-none"
+                          value={formData.muayThaiGraduation}
+                          onChange={(e) => setFormData({ ...formData, muayThaiGraduation: e.target.value })}
+                        >
+                          {muayThaiGraduations.map(g => (
+                            <option key={g} value={g}>{g}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Plano</label>
                       <select 
@@ -917,6 +1288,16 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                             className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all"
                             value={formData.guardianPhone}
                             onChange={(e) => setFormData({ ...formData, guardianPhone: maskPhone(e.target.value) })}
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Profissão do Responsável</label>
+                          <input 
+                            required={isMinor}
+                            type="text" 
+                            className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all"
+                            value={formData.guardianOccupation}
+                            onChange={(e) => setFormData({ ...formData, guardianOccupation: e.target.value })}
                           />
                         </div>
                       </motion.div>

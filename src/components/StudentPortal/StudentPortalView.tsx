@@ -16,7 +16,7 @@ import { ptBR } from 'date-fns/locale';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatCurrency, cn } from '../../utils/formatters';
 import { Logo } from '../ui/Logo';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import toast from 'react-hot-toast';
 
 interface StudentPortalViewProps {
@@ -27,9 +27,10 @@ interface StudentPortalViewProps {
   settings: any;
   evaluations: any[];
   graduations: any[];
+  installments: any[];
 }
 
-export const StudentPortalView = ({ students, payments, checkIns, belts, settings, evaluations, graduations }: StudentPortalViewProps) => {
+export const StudentPortalView = ({ students, payments, checkIns, belts, settings, evaluations, graduations, installments }: StudentPortalViewProps) => {
   const { user, logout } = useAuth();
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'finance' | 'timeline'>('dashboard');
@@ -38,8 +39,9 @@ export const StudentPortalView = ({ students, payments, checkIns, belts, setting
   const [myCheckIns, setMyCheckIns] = useState<any[]>([]);
   const [myEvaluations, setMyEvaluations] = useState<any[]>([]);
   const [myGraduations, setMyGraduations] = useState<any[]>([]);
+  const [myInstallments, setMyInstallments] = useState<any[]>([]);
 
-  const hasPendingPayments = myPayments.some(p => p.status === 'Pending');
+  const hasPendingPayments = myPayments.some(p => p.status === 'Pending') || myInstallments.some(i => i.status === 'pending');
 
   // Find all students linked to this email
   const linkedStudents = students.filter(s => s.email === user?.email);
@@ -72,6 +74,10 @@ export const StudentPortalView = ({ students, payments, checkIns, belts, setting
         const studentGrads = graduations.filter(g => g.studentId === student.id);
         const sortedGrads = [...studentGrads].sort((a, b) => (b.date?.seconds || 0) - (a.date?.seconds || 0));
         setMyGraduations(sortedGrads);
+
+        const studentInsts = installments.filter(i => i.studentId === student.id);
+        const sortedInsts = [...studentInsts].sort((a, b) => (a.dueDate?.seconds || 0) - (b.dueDate?.seconds || 0));
+        setMyInstallments(sortedInsts);
       }
     } else {
       setStudentData(null);
@@ -412,6 +418,40 @@ export const StudentPortalView = ({ students, payments, checkIns, belts, setting
             ))}
           </div>
         </div>
+
+        {/* Product Installments Section */}
+        {myInstallments.length > 0 && (
+          <div className="p-8 bg-white border border-gray-100 shadow-sm rounded-[40px] space-y-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-100 rounded-xl">
+                <CreditCard className="w-5 h-5 text-amber-600" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900">Parcelas de Produtos</h3>
+            </div>
+
+            <div className="space-y-3">
+              {myInstallments.map(inst => (
+                <div key={inst.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                  <div>
+                    <p className="text-sm font-bold text-gray-900">{inst.productName}</p>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase">
+                      Vencimento: {inst.dueDate?.seconds ? format(new Date(inst.dueDate.seconds * 1000), 'dd/MM/yyyy') : 'N/A'} • {inst.installmentNumber}/{inst.totalInstallments}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-black text-gray-900">{formatCurrency(inst.amount)}</p>
+                    <span className={cn(
+                      "text-[9px] font-black uppercase tracking-tighter px-2 py-0.5 rounded-full",
+                      inst.status === 'paid' ? "bg-emerald-100 text-emerald-600" : "bg-rose-100 text-rose-600"
+                    )}>
+                      {inst.status === 'paid' ? 'Pago' : 'Pendente'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Attendance Section */}
         <div className="p-8 bg-white border border-gray-100 shadow-sm rounded-[40px] space-y-6">

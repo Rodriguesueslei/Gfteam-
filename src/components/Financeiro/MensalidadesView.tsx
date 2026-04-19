@@ -16,7 +16,7 @@ import { formatCurrency, cn } from '../../utils/formatters';
 import { Timestamp, addDoc, collection, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import toast from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface MensalidadesViewProps {
   students: any[];

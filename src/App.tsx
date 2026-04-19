@@ -17,6 +17,7 @@ import {
   Moon
 } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
+import { motion, AnimatePresence } from 'motion/react';
 import { useAuth, AuthProvider } from './contexts/AuthContext';
 import { signInWithGoogle, logout } from './firebase';
 import { 
@@ -55,8 +56,9 @@ import { CheckInTabletView } from './components/CheckIn/CheckInTabletView';
 import { StudentPortalView } from './components/StudentPortal/StudentPortalView';
 
 const AppContent = () => {
-  const { user, loading: authLoading, role, permissions, isApproved, isAdmin, isReceptionist, isCheckInTablet } = useAuth();
+  const { user, loading: authLoading, role, permissions, isApproved, isAdmin, isProfessor, isReceptionist, isCheckInTablet } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [viewMode, setViewMode] = useState<'professional' | 'student'>('professional');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -90,12 +92,22 @@ const AppContent = () => {
 
   // Derive linked student IDs for secure data fetching (for parents/students)
   const myStudentIds = React.useMemo(() => {
-    if (isAdmin || permissions.students) return undefined;
+    const isAdminOrStaff = isAdmin || permissions.students;
     if (!students || students.length === 0) return [];
-    return students.map(s => s.id);
-  }, [students, isAdmin, permissions.students]);
+    
+    // For students/parents, we filter by email
+    const linked = students.filter(s => s.email === user?.email);
+    return linked.map(s => s.id);
+  }, [students, user?.email, isAdmin, permissions.students]);
 
-  const checkIns = useCheckIns(!!user, isAdmin || permissions.students, myStudentIds);
+  // Check if current professional user HAS a student record too
+  const hasStudentRecord = React.useMemo(() => {
+    if (role === 'user') return true;
+    if (!students || !user?.email) return false;
+    return students.some(s => s.email === user.email);
+  }, [students, user?.email, role]);
+
+  const checkIns = useCheckIns(!!user, isAdmin || permissions.students, (isAdmin || permissions.students) ? undefined : myStudentIds);
   const installments = useInstallments(isAdmin || permissions.finance);
   const evaluations = useEvaluations(!!user, isAdmin || permissions.students, myStudentIds);
   const graduations = useGraduations(!!user, isAdmin || permissions.students, myStudentIds);
@@ -176,14 +188,28 @@ const AppContent = () => {
   }
 
   if (isCheckInTablet) {
-    return <CheckInTabletView students={students} classes={classes} settings={settings} />;
+    return <CheckInTabletView students={students} classes={classes} settings={settings} plans={plans} checkIns={checkIns} />;
   }
 
-  if (role === 'user') {
+  if (role === 'user' || (viewMode === 'student' && hasStudentRecord)) {
     return (
       <div className="min-h-screen bg-[#fafafa] relative">
         <div className="p-4 lg:p-10 max-w-5xl mx-auto">
           <Toaster position="top-right" />
+          
+          {/* View Toggle for Professors/Admins in Student View */}
+          {role !== 'user' && (
+            <div className="mb-6 flex justify-end">
+              <button 
+                onClick={() => setViewMode('professional')}
+                className="px-6 py-3 bg-black text-white font-bold rounded-2xl shadow-xl hover:bg-gray-900 transition-all flex items-center gap-2 italic uppercase tracking-tighter text-xs"
+              >
+                <TrendingUp className="w-4 h-4" />
+                Voltar ao Painel Geral
+              </button>
+            </div>
+          )}
+
           <StudentPortalView 
             students={students} 
             payments={payments} 
@@ -192,6 +218,7 @@ const AppContent = () => {
             settings={settings} 
             evaluations={evaluations}
             graduations={graduations}
+            installments={installments}
           />
         </div>
         
@@ -213,9 +240,19 @@ const AppContent = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardView belts={belts} students={students} payments={payments} classes={classes} expenses={expenses} products={products} checkIns={checkIns} />;
+        return <DashboardView belts={belts} students={students} payments={payments} classes={classes} expenses={expenses} products={products} checkIns={checkIns} onNavigate={setActiveTab} />;
       case 'students':
-        return <StudentsView belts={belts} students={students} instructors={instructors} plans={plans} classes={classes} evaluations={evaluations} graduations={graduations} />;
+        return <StudentsView 
+          belts={belts} 
+          students={students} 
+          instructors={instructors} 
+          plans={plans} 
+          classes={classes} 
+          evaluations={evaluations} 
+          graduations={graduations} 
+          payments={payments}
+          installments={installments}
+        />;
       case 'instructors':
         return <InstructorsView instructors={instructors} />;
       case 'classes':
@@ -225,7 +262,7 @@ const AppContent = () => {
       case 'plans':
         return <PlansView plans={plans} />;
       case 'checkin':
-        return <CheckInTabletView students={students} classes={classes} settings={settings} />;
+        return <CheckInTabletView students={students} classes={classes} settings={settings} plans={plans} checkIns={checkIns} />;
       case 'users':
         return <UsersView users={users} />;
       case 'finance':
@@ -248,7 +285,7 @@ const AppContent = () => {
           }} 
         />;
       default:
-        return <DashboardView belts={belts} students={students} payments={payments} classes={classes} expenses={expenses} products={products} checkIns={checkIns} />;
+        return <DashboardView belts={belts} students={students} payments={payments} classes={classes} expenses={expenses} products={products} checkIns={checkIns} onNavigate={setActiveTab} />;
     }
   };
 
@@ -271,10 +308,23 @@ const AppContent = () => {
       <Toaster position="top-right" />
       <LoadingOverlay isLoading={isLoading} />
       
+      {/* Backdrop for mobile sidebar */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[45] lg:hidden"
+          />
+        )}
+      </AnimatePresence>
+      
       {/* Sidebar */}
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-white/5 transition-transform lg:translate-x-0 lg:static",
-        isSidebarOpen ? "translate-x-0" : "-translate-x-full"
+        "fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-white/5 transition-all duration-500 ease-in-out lg:translate-x-0 lg:static",
+        isSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"
       )}>
         <div className="h-full flex flex-col p-6">
           <div className="mb-12 px-2 flex items-center gap-3.5">
@@ -330,6 +380,17 @@ const AppContent = () => {
                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider truncate">{role}</p>
               </div>
             </div>
+
+            {hasStudentRecord && (
+              <button 
+                onClick={() => setViewMode('student')}
+                className="w-full flex items-center gap-3 px-4 py-3 mb-2 bg-emerald-50 text-emerald-600 rounded-2xl font-bold text-sm hover:bg-emerald-100 transition-all border border-emerald-100/50 italic uppercase tracking-tighter"
+              >
+                <UserCheck className="w-5 h-5" />
+                Meu Perfil de Aluno
+              </button>
+            )}
+
             <button 
               onClick={logout}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-sm text-rose-500 hover:bg-rose-50 transition-all"
@@ -342,23 +403,28 @@ const AppContent = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 min-w-0 overflow-auto">
-        <div className="p-4 lg:p-8 max-w-7xl mx-auto">
-          <header className="flex items-center justify-between mb-8 lg:hidden">
+      <main className="flex-1 min-w-0 overflow-auto bg-[#fafafa] dark:bg-gray-950">
+        <div className="p-4 sm:p-6 lg:p-10 max-w-[1600px] mx-auto min-h-screen">
+          <header className="flex items-center justify-between mb-8 lg:hidden bg-white dark:bg-gray-900 p-4 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-xl shadow-black/5 overflow-hidden p-1.5 border border-gray-50">
+              <div className="w-10 h-10 bg-white dark:bg-white/10 rounded-xl flex items-center justify-center shadow-xl shadow-black/5 overflow-hidden p-1.5 border border-gray-50 dark:border-white/10">
                 <Logo size="sm" settings={settings} />
               </div>
               <div className="flex flex-col">
-                <span className="text-lg font-serif font-bold text-black italic tracking-tighter leading-none">Gfteam</span>
+                <span className="text-lg font-serif font-bold text-black dark:text-white italic tracking-tighter leading-none">Gfteam</span>
                 <span className="text-[9px] tracking-[0.2em] font-bold text-gray-400 uppercase">Limeira</span>
               </div>
             </div>
-            <button onClick={() => setSidebarOpen(true)} className="p-2 bg-white rounded-xl border border-gray-100 shadow-sm">
+            <button 
+              onClick={() => setSidebarOpen(true)} 
+              className="p-3 bg-black text-white rounded-2xl shadow-xl active:scale-95 transition-all"
+            >
               <Menu className="w-6 h-6" />
             </button>
           </header>
-          {renderContent()}
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">
+            {renderContent()}
+          </div>
         </div>
       </main>
     </div>

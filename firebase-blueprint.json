@@ -36,7 +36,8 @@
         "faceDescriptor": { "type": "string", "description": "JSON stringified array of face embeddings" },
         "facePhoto": { "type": "string", "description": "Base64 string of the student's face photo" },
         "monthlyFee": { "type": "number", "description": "Monthly tuition fee amount" },
-        "planId": { "type": "string", "description": "ID of the student's current plan" }
+        "planId": { "type": "string", "description": "ID of the student's current plan" },
+        "gympassId": { "type": "string", "description": "Unique ID for Gympass integration" }
       },
       "required": ["name", "email", "belt", "status", "category"]
     },
@@ -159,6 +160,8 @@
       "type": "object",
       "properties": {
         "stripeSecretKey": { "type": "string", "description": "Secret key for Stripe integration" },
+        "gympassClientId": { "type": "string", "description": "Client ID for Gympass API" },
+        "gympassClientSecret": { "type": "string", "description": "Client Secret for Gympass API" },
         "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
       }
     },

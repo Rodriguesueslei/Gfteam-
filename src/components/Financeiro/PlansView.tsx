@@ -10,7 +10,7 @@ import {
 import { collection, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { cn } from '../../utils/formatters';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 
 interface PlansViewProps {
@@ -25,7 +25,8 @@ export const PlansView = ({ plans }: PlansViewProps) => {
     price: 0,
     durationMonths: 1,
     description: '',
-    status: 'Active'
+    status: 'Active',
+    allowedModalities: ['Jiu-Jitsu'] as string[]
   });
 
   const handleSavePlan = async (e: React.FormEvent) => {
@@ -107,6 +108,17 @@ export const PlansView = ({ plans }: PlansViewProps) => {
               <p className="mt-4 text-sm text-gray-500 leading-relaxed font-medium">{plan.description}</p>
             )}
 
+            <div className="mt-4 flex flex-wrap gap-2">
+              {(plan.allowedModalities || ['Jiu-Jitsu']).map((mod: string) => (
+                <span key={mod} className={cn(
+                  "px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-widest",
+                  mod === 'Muay Thai' ? "bg-rose-50 text-rose-500 border border-rose-100" : "bg-blue-50 text-blue-500 border border-blue-100"
+                )}>
+                  {mod}
+                </span>
+              ))}
+            </div>
+
             <div className="mt-6 pt-6 border-t border-gray-50 flex items-center justify-between">
               <span className={cn(
                 "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
@@ -185,6 +197,36 @@ export const PlansView = ({ plans }: PlansViewProps) => {
                     value={planForm.description} 
                     onChange={e => setPlanForm({...planForm, description: e.target.value})} 
                   />
+                </div>
+
+                <div className="space-y-4">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Modalidades Incluídas</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['Jiu-Jitsu', 'Muay Thai'].map(mod => {
+                      const isSelected = (planForm.allowedModalities || []).includes(mod);
+                      return (
+                        <button
+                          key={mod}
+                          type="button"
+                          onClick={() => {
+                            const current = planForm.allowedModalities || [];
+                            const next = isSelected 
+                              ? current.filter(m => m !== mod)
+                              : [...current, mod];
+                            setPlanForm({ ...planForm, allowedModalities: next });
+                          }}
+                          className={cn(
+                            "px-4 py-2 rounded-xl text-xs font-bold transition-all border-2",
+                            isSelected 
+                              ? "bg-black text-white border-black" 
+                              : "bg-white text-gray-400 border-gray-100 hover:border-gray-200"
+                          )}
+                        >
+                          {mod}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
                 <div className="space-y-2">

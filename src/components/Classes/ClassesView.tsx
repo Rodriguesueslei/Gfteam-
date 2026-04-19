@@ -7,7 +7,7 @@ import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { cn } from '../../utils/formatters';
 import toast from 'react-hot-toast';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 
@@ -26,9 +26,14 @@ export const ClassesView = ({ classes, instructors, students }: ClassesViewProps
   const [showDeleteScopeModal, setShowDeleteScopeModal] = useState(false);
   const [pendingUpdateData, setPendingUpdateData] = useState<any>(null);
   const [classToDelete, setClassToDelete] = useState<any>(null);
-  const [viewMode, setViewMode] = useState<'grid' | 'calendar'>('grid');
+  const [viewMode, setViewMode] = useState<'grid' | 'timeline' | 'calendar'>('timeline');
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  
+  const nextDays = useMemo(() => {
+    return Array.from({ length: 14 }).map((_, i) => addDays(startOfDay(new Date()), i));
+  }, []);
+
   const { isAdmin } = useAuth();
   
   const [formData, setFormData] = useState({
@@ -39,8 +44,10 @@ export const ClassesView = ({ classes, instructors, students }: ClassesViewProps
     startTime: '',
     endTime: '',
     capacity: 20,
+    checkInOffset: 30,
     isRecurring: true,
-    recurrenceWeeks: 4
+    recurrenceWeeks: 4,
+    modality: 'Jiu-Jitsu'
   });
 
   const days = ['Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado', 'Domingo'];
@@ -205,6 +212,39 @@ export const ClassesView = ({ classes, instructors, students }: ClassesViewProps
     );
   };
 
+  const classesByDate = useMemo(() => {
+    const grouped: { [key: string]: any[] } = {};
+    
+    const relevantClasses = classes.filter(cls => {
+      if (!cls.date) return false;
+      const classDate = cls.date.seconds ? new Date(cls.date.seconds * 1000) : new Date(cls.date);
+      
+      if (viewMode === 'timeline') {
+        // Show classes from selected date onwards for timeline
+        return classDate >= startOfDay(selectedDate);
+      }
+      if (viewMode === 'calendar') {
+        return isSameDay(classDate, selectedDate);
+      }
+      return true;
+    });
+
+    relevantClasses.sort((a, b) => {
+      const dateA = a.date.seconds ? a.date.seconds : new Date(a.date).getTime() / 1000;
+      const dateB = b.date.seconds ? b.date.seconds : new Date(b.date).getTime() / 1000;
+      if (dateA !== dateB) return dateA - dateB;
+      return (a.startTime || '').localeCompare(b.startTime || '');
+    });
+
+    relevantClasses.forEach(cls => {
+      const dateKey = cls.date.seconds ? format(new Date(cls.date.seconds * 1000), 'yyyy-MM-dd') : format(new Date(cls.date), 'yyyy-MM-dd');
+      if (!grouped[dateKey]) grouped[dateKey] = [];
+      grouped[dateKey].push(cls);
+    });
+
+    return grouped;
+  }, [classes, viewMode, selectedDate]);
+
   const filteredClasses = useMemo(() => {
     if (viewMode === 'calendar') {
       return classes.filter(cls => {
@@ -215,6 +255,151 @@ export const ClassesView = ({ classes, instructors, students }: ClassesViewProps
     }
     return classes;
   }, [classes, viewMode, selectedDate]);
+
+  const renderClassCard = (cls: any) => {
+    const classInstructors = instructors.filter(i => cls.instructorIds?.includes(i.id));
+    const isSelected = selectedClasses.includes(cls.id);
+
+    return (
+      <div 
+        key={cls.id} 
+        className={cn(
+          "p-6 bg-white border rounded-[32px] shadow-sm hover:shadow-xl transition-all group relative",
+          isSelected ? "border-black ring-1 ring-black" : "border-gray-100"
+        )}
+      >
+        {isAdmin && (
+          <div className="absolute top-4 right-4 z-10">
+            <button 
+              onClick={() => toggleSelection(cls.id)}
+              className={cn(
+                "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
+                isSelected ? "bg-black border-black text-white" : "border-gray-200 bg-white hover:border-gray-400"
+              )}
+            >
+              {isSelected && <Check className="w-3 h-3" />}
+            </button>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between mb-4 pr-8">
+          <div className="flex items-center gap-2">
+            <div className="px-3 py-1 bg-gray-100 rounded-full text-[10px] font-black uppercase tracking-widest text-gray-500">
+              {cls.dayOfWeek}
+            </div>
+            <div className={cn(
+              "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+              cls.modality === 'Muay Thai' ? "bg-rose-100 text-rose-700" : "bg-blue-100 text-blue-700"
+            )}>
+              {cls.modality || 'Jiu-Jitsu'}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 text-emerald-600 font-bold text-xs">
+            <Clock className="w-3 h-3" />
+            {formatTime(cls.startTime)} - {formatTime(cls.endTime)}
+          </div>
+        </div>
+
+        <h3 className="text-xl font-black text-gray-900 mb-2 uppercase italic tracking-tighter">{cls.title || cls.name}</h3>
+        
+        <div className="flex flex-wrap gap-2 mb-4">
+          {cls.categories?.map((cat: string, idx: number) => (
+            <span key={`${cls.id}-${cat}-${idx}`} className="px-2 py-0.5 bg-gray-50 text-gray-400 text-[9px] font-bold uppercase tracking-wider rounded-md">
+              {cat}
+            </span>
+          ))}
+        </div>
+
+        <div className="flex items-center -space-x-2 mb-6">
+          {classInstructors.map((instructor, idx) => (
+            <div 
+              key={`${cls.id}-${instructor.id}-${idx}`} 
+              className="w-8 h-8 rounded-full bg-white border-2 border-white shadow-sm flex items-center justify-center text-xs font-bold text-gray-400 overflow-hidden"
+              title={instructor.name}
+            >
+              {instructor.name.charAt(0)}
+            </div>
+          ))}
+          {classInstructors.length === 0 && (
+            <span className="text-xs font-medium text-gray-400 ml-2">Sem instrutor</span>
+          )}
+          {classInstructors.length > 0 && (
+            <span className="text-xs font-medium text-gray-500 ml-4">
+              {classInstructors.length === 1 ? classInstructors[0].name : `${classInstructors.length} Professores`}
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between pt-6 border-t border-gray-50">
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2 text-gray-900">
+              <UserCheck className="w-4 h-4 text-emerald-500" />
+              <span className="text-xs font-black">{(cls.presence || []).length} Presentes</span>
+            </div>
+            <div className="flex items-center gap-2 text-gray-400">
+              <Users className="w-4 h-4" />
+              <span className="text-[10px] font-bold">{cls.capacity} Vagas Totais</span>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => {
+                setSelectedClassForPresence(cls);
+                setIsPresenceModalOpen(true);
+              }}
+              className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl transition-all group/btn"
+              title="Ver lista de presença"
+            >
+              <Eye className="w-5 h-5 group-hover/btn:scale-110 transition-transform" />
+            </button>
+            
+            {isAdmin && (
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => { 
+                    setEditingClass(cls); 
+                    setFormData({
+                      title: cls.title || cls.name || '',
+                      instructorIds: cls.instructorIds || [],
+                      categories: cls.categories || [],
+                      daysOfWeek: cls.daysOfWeek || (cls.dayOfWeek ? [cls.dayOfWeek] : []),
+                      startTime: cls.startTime || '',
+                      endTime: cls.endTime || '',
+                      capacity: cls.capacity || 20,
+                      checkInOffset: cls.checkInOffset || 30,
+                      isRecurring: cls.isRecurring || false,
+                      recurrenceWeeks: 4,
+                      modality: cls.modality || 'Jiu-Jitsu'
+                    }); 
+                    setIsModalOpen(true); 
+                  }} 
+                  className="p-2 text-gray-400 hover:text-black transition-colors"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (cls.recurrenceId) {
+                      setClassToDelete(cls);
+                      setShowDeleteScopeModal(true);
+                    } else if (confirm("Deseja excluir esta aula?")) {
+                      setClassToDelete(cls);
+                      performDelete('single');
+                    }
+                  }}
+                  className="p-2 text-gray-400 hover:text-rose-500 transition-colors"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderCalendarTile = ({ date, view }: any) => {
     if (view === 'month') {
@@ -274,12 +459,21 @@ export const ClassesView = ({ classes, instructors, students }: ClassesViewProps
             <button 
               onClick={() => setViewMode('grid')}
               className={cn("p-2 rounded-lg transition-all", viewMode === 'grid' ? "bg-white shadow-sm text-black" : "text-gray-400")}
+              title="Grade"
             >
               <Grid className="w-4 h-4" />
             </button>
             <button 
+              onClick={() => setViewMode('timeline')}
+              className={cn("p-2 rounded-lg transition-all", viewMode === 'timeline' ? "bg-white shadow-sm text-black" : "text-gray-400")}
+              title="Linha do Tempo"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button 
               onClick={() => setViewMode('calendar')}
               className={cn("p-2 rounded-lg transition-all", viewMode === 'calendar' ? "bg-white shadow-sm text-black" : "text-gray-400")}
+              title="Calendário"
             >
               <CalendarIcon className="w-4 h-4" />
             </button>
@@ -307,6 +501,7 @@ export const ClassesView = ({ classes, instructors, students }: ClassesViewProps
                   startTime: '', 
                   endTime: '', 
                   capacity: 20,
+                  checkInOffset: 30,
                   isRecurring: true,
                   recurrenceWeeks: 4
                 }); 
@@ -320,6 +515,33 @@ export const ClassesView = ({ classes, instructors, students }: ClassesViewProps
           )}
         </div>
       </header>
+
+      {viewMode !== 'grid' && (
+        <div className="flex items-center gap-4 overflow-x-auto pb-4 no-scrollbar -mx-6 px-6 sm:mx-0 sm:px-0">
+          {nextDays.map((date) => {
+            const isSelected = isSameDay(date, selectedDate);
+            return (
+              <button
+                key={date.toISOString()}
+                onClick={() => setSelectedDate(date)}
+                className={cn(
+                  "flex flex-col items-center min-w-[70px] p-4 rounded-3xl transition-all border-2",
+                  isSelected 
+                    ? "bg-black border-black text-white shadow-lg scale-105" 
+                    : "bg-white border-gray-100 text-gray-400 hover:border-gray-200"
+                )}
+              >
+                <span className="text-[10px] font-black uppercase tracking-widest mb-1">
+                  {format(date, 'EEE', { locale: ptBR })}
+                </span>
+                <span className="text-xl font-black italic">
+                  {format(date, 'dd')}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="flex flex-col lg:flex-row gap-8">
         {viewMode === 'calendar' && (
@@ -342,145 +564,41 @@ export const ClassesView = ({ classes, instructors, students }: ClassesViewProps
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {filteredClasses.map(cls => {
-              const classInstructors = instructors.filter(i => cls.instructorIds?.includes(i.id));
-              const isSelected = selectedClasses.includes(cls.id);
-
-              return (
-                <div 
-                  key={cls.id} 
-                  className={cn(
-                    "p-6 bg-white border rounded-[32px] shadow-sm hover:shadow-xl transition-all group relative",
-                    isSelected ? "border-black ring-1 ring-black" : "border-gray-100"
-                  )}
-                >
-                  {isAdmin && (
-                    <div className="absolute top-4 right-4 z-10">
-                      <button 
-                        onClick={() => toggleSelection(cls.id)}
-                        className={cn(
-                          "w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all",
-                          isSelected ? "bg-black border-black text-white" : "border-gray-200 bg-white hover:border-gray-400"
-                        )}
-                      >
-                        {isSelected && <Check className="w-3 h-3" />}
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between mb-4 pr-8">
-                    <div className="px-3 py-1 bg-gray-100 rounded-full text-[10px] font-black uppercase tracking-widest text-gray-500">
-                      {cls.dayOfWeek}
-                    </div>
-                    <div className="flex items-center gap-1 text-emerald-600 font-bold text-xs">
-                      <Clock className="w-3 h-3" />
-                      {formatTime(cls.startTime)} - {formatTime(cls.endTime)}
-                    </div>
+          <div className={cn(
+            viewMode === 'timeline' ? "space-y-12" : "grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
+          )}>
+            {viewMode === 'grid' ? (
+              classes.map(cls => renderClassCard(cls))
+            ) : (
+              (Object.entries(classesByDate) as [string, any[]][]).map(([dateKey, dateClasses]) => (
+                <div key={dateKey} className="space-y-6">
+                  <div className="flex items-center gap-4">
+                    <h3 className="text-xl font-black text-black italic uppercase tracking-tighter">
+                      {isSameDay(parseISO(dateKey), new Date()) ? 'Hoje' : 
+                       isSameDay(parseISO(dateKey), addDays(new Date(), 1)) ? 'Amanhã' :
+                       format(parseISO(dateKey), "EEEE, d 'de' MMM", { locale: ptBR })}
+                    </h3>
+                    <div className="h-px bg-gray-100 flex-1" />
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{dateClasses.length} Aulas</span>
                   </div>
-
-                  <h3 className="text-xl font-black text-gray-900 mb-2 uppercase italic tracking-tighter">{cls.title || cls.name}</h3>
-                  
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    {cls.categories?.map((cat: string, idx: number) => (
-                      <span key={`${cls.id}-${cat}-${idx}`} className="px-2 py-0.5 bg-gray-50 text-gray-400 text-[9px] font-bold uppercase tracking-wider rounded-md">
-                        {cat}
-                      </span>
-                    ))}
-                  </div>
-
-                  <div className="flex items-center -space-x-2 mb-6">
-                    {classInstructors.map((instructor, idx) => (
-                      <div 
-                        key={`${cls.id}-${instructor.id}-${idx}`} 
-                        className="w-8 h-8 rounded-full bg-white border-2 border-white shadow-sm flex items-center justify-center text-xs font-bold text-gray-400 overflow-hidden"
-                        title={instructor.name}
-                      >
-                        {instructor.name.charAt(0)}
-                      </div>
-                    ))}
-                    {classInstructors.length === 0 && (
-                      <span className="text-xs font-medium text-gray-400 ml-2">Sem instrutor</span>
-                    )}
-                    {classInstructors.length > 0 && (
-                      <span className="text-xs font-medium text-gray-500 ml-4">
-                        {classInstructors.length === 1 ? classInstructors[0].name : `${classInstructors.length} Professores`}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-center justify-between pt-6 border-t border-gray-50">
-                    <div className="flex flex-col gap-1">
-                      <div className="flex items-center gap-2 text-gray-900">
-                        <UserCheck className="w-4 h-4 text-emerald-500" />
-                        <span className="text-xs font-black">{(cls.presence || []).length} Presentes</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-gray-400">
-                        <Users className="w-4 h-4" />
-                        <span className="text-[10px] font-bold">{cls.capacity} Vagas Totais</span>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => {
-                          setSelectedClassForPresence(cls);
-                          setIsPresenceModalOpen(true);
-                        }}
-                        className="p-2 text-blue-500 hover:bg-blue-50 rounded-xl transition-all group/btn"
-                        title="Ver lista de presença"
-                      >
-                        <Eye className="w-5 h-5 group-hover/btn:scale-110 transition-transform" />
-                      </button>
-                      
-                      {isAdmin && (
-                        <div className="flex items-center gap-2">
-                          <button 
-                            onClick={() => { 
-                              setEditingClass(cls); 
-                              setFormData({
-                                title: cls.title || cls.name || '',
-                                instructorIds: cls.instructorIds || [],
-                                categories: cls.categories || [],
-                                daysOfWeek: cls.daysOfWeek || (cls.dayOfWeek ? [cls.dayOfWeek] : []),
-                                startTime: cls.startTime || '',
-                                endTime: cls.endTime || '',
-                                capacity: cls.capacity || 20,
-                                isRecurring: cls.isRecurring || false,
-                                recurrenceWeeks: 4
-                              }); 
-                              setIsModalOpen(true); 
-                            }} 
-                            className="p-2 text-gray-400 hover:text-black transition-colors"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (cls.recurrenceId) {
-                                setClassToDelete(cls);
-                                setShowDeleteScopeModal(true);
-                              } else if (confirm("Deseja excluir esta aula?")) {
-                                setClassToDelete(cls);
-                                performDelete('single');
-                              }
-                            }}
-                            className="p-2 text-gray-400 hover:text-rose-500 transition-colors"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {dateClasses.map(cls => renderClassCard(cls))}
                   </div>
                 </div>
-              );
-            })}
-            {filteredClasses.length === 0 && (
+              ))
+            )}
+
+            {Object.keys(classesByDate).length === 0 && viewMode !== 'grid' && (
               <div className="col-span-full py-12 text-center bg-gray-50 rounded-[32px] border-2 border-dashed border-gray-200">
                 <CalendarIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500 font-medium">Nenhuma aula encontrada para este dia.</p>
+                <p className="text-gray-500 font-medium">Nenhuma aula encontrada para este período.</p>
+              </div>
+            )}
+            
+            {classes.length === 0 && viewMode === 'grid' && (
+              <div className="col-span-full py-12 text-center bg-gray-50 rounded-[32px] border-2 border-dashed border-gray-200">
+                <CalendarIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500 font-medium">A grade de horários está vazia.</p>
               </div>
             )}
           </div>
@@ -693,6 +811,25 @@ export const ClassesView = ({ classes, instructors, students }: ClassesViewProps
                 </div>
 
                 <div className="space-y-2">
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-4">Modalidade</label>
+                  <div className="flex gap-2">
+                    {['Jiu-Jitsu', 'Muay Thai'].map(mod => (
+                      <button
+                        key={mod}
+                        type="button"
+                        onClick={() => setFormData({ ...formData, modality: mod })}
+                        className={cn(
+                          "flex-1 px-4 py-3 rounded-xl text-xs font-bold transition-all",
+                          formData.modality === mod ? "bg-black text-white shadow-lg" : "bg-gray-50 text-gray-500 hover:bg-gray-100"
+                        )}
+                      >
+                        {mod}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-4">Professores</label>
                   <div className="grid grid-cols-2 gap-2">
                     {instructors.map(i => (
@@ -765,10 +902,14 @@ export const ClassesView = ({ classes, instructors, students }: ClassesViewProps
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-4">Capacidade</label>
                     <input type="number" className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none" value={formData.capacity || ''} onChange={e => setFormData({...formData, capacity: parseInt(e.target.value) || 0})} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-4">Check-in (min antes)</label>
+                    <input type="number" className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none" value={formData.checkInOffset} onChange={e => setFormData({...formData, checkInOffset: parseInt(e.target.value) || 0})} />
                   </div>
                 </div>
 

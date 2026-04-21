@@ -150,7 +150,8 @@
       "properties": {
         "logoUrl": { "type": "string", "description": "URL or Base64 of the academy logo" },
         "stripePublicKey": { "type": "string", "description": "Public key for Stripe integration" },
-        "paymentProvider": { "type": "string", "enum": ["Stripe", "None"], "description": "Active payment provider" },
+        "mercadoPagoPublicKey": { "type": "string", "description": "Public key for Mercado Pago integration" },
+        "paymentProvider": { "type": "string", "enum": ["Stripe", "MercadoPago", "None"], "description": "Active payment provider" },
         "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
       }
     },
@@ -160,6 +161,7 @@
       "type": "object",
       "properties": {
         "stripeSecretKey": { "type": "string", "description": "Secret key for Stripe integration" },
+        "mercadoPagoAccessToken": { "type": "string", "description": "Access Token for Mercado Pago integration" },
         "gympassClientId": { "type": "string", "description": "Client ID for Gympass API" },
         "gympassClientSecret": { "type": "string", "description": "Client Secret for Gympass API" },
         "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
@@ -233,6 +235,20 @@
         "type": { "type": "string", "enum": ["Technical", "Behavioral", "General"], "description": "Type of note" }
       },
       "required": ["studentId", "note", "date"]
+    },
+    "backup": {
+      "title": "Backup",
+      "description": "A snapshot of the academy data",
+      "type": "object",
+      "properties": {
+        "fileName": { "type": "string", "description": "Name of the backup file" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the backup was created" },
+        "size": { "type": "number", "description": "Size of the backup in bytes" },
+        "collections": { "type": "array", "items": { "type": "string" }, "description": "List of collections included" },
+        "data": { "type": "string", "description": "JSON stringified snapshot of the data (optional if stored elsewhere)" },
+        "type": { "type": "string", "enum": ["Automatic", "Manual"], "description": "Trigger type" }
+      },
+      "required": ["fileName", "createdAt", "type"]
     }
   },
   "firestore": {
@@ -295,6 +311,10 @@
     "/roles/{roleId}": {
       "schema": "role",
       "description": "User roles and permissions definitions"
+    },
+    "/backups/{backupId}": {
+      "schema": "backup",
+      "description": "Snapshots and history of academy data backups"
     }
   }
 }

@@ -116,6 +116,7 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
     monthlyFee: 150,
     planId: '',
     gympassId: '',
+    nextPaymentDate: format(new Date(), 'yyyy-MM-dd'),
     facePhoto: null as string | null,
     faceDescriptor: null as string | null,
     modalities: ['Jiu-Jitsu'] as string[],
@@ -167,8 +168,10 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const { nextPaymentDate, ...rest } = formData;
       const dataToSave = {
-        ...formData,
+        ...rest,
+        nextPaymentDate: nextPaymentDate ? Timestamp.fromDate(new Date(nextPaymentDate)) : Timestamp.now(),
         facePhoto: formData.facePhoto || editingStudent?.facePhoto || null,
         faceDescriptor: formData.faceDescriptor || editingStudent?.faceDescriptor || null
       };
@@ -177,16 +180,27 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
         await updateDoc(doc(db, 'students', editingStudent.id), dataToSave);
         toast.success("Aluno atualizado!");
       } else {
-        const selectedPlan = plans.find((p: any) => p.id === formData.planId);
-        const duration = selectedPlan?.durationMonths || 1;
-        
-        await addDoc(collection(db, 'students'), {
-          ...formData,
+        const studentRef = await addDoc(collection(db, 'students'), {
+          ...dataToSave,
           joinDate: Timestamp.now(),
-          lastPaymentDate: Timestamp.now(),
-          nextPaymentDate: Timestamp.fromDate(new Date(new Date().setMonth(new Date().getMonth() + duration)))
+          lastPaymentDate: Timestamp.now()
         });
-        toast.success("Aluno cadastrado com sucesso!");
+
+        // Criar registro de pagamento pendente para a primeira mensalidade
+        const selectedPlan = plans.find((p: any) => p.id === formData.planId);
+        await addDoc(collection(db, 'payments'), {
+          studentId: studentRef.id,
+          studentName: formData.name,
+          amount: formData.monthlyFee || selectedPlan?.price || 150,
+          method: 'Pendente',
+          date: Timestamp.now(),
+          type: 'mensalidade',
+          status: 'Pending',
+          period: format(new Date(), 'MMMM yyyy', { locale: ptBR }),
+          createdAt: Timestamp.now()
+        });
+
+        toast.success("Aluno cadastrado! Mensalidade pendente gerada.");
       }
       setIsModalOpen(false);
     } catch (error) {
@@ -381,7 +395,8 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                   facialId: '',
                   monthlyFee: 150,
                   planId: '',
-                  gympassId: ''
+                  gympassId: '',
+                  nextPaymentDate: format(new Date(), 'yyyy-MM-dd')
                 } as any);
                 setIsModalOpen(true); 
               }}
@@ -490,7 +505,17 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                 {(isAdmin || isReceptionist) && (
                   <>
                     <button 
-                      onClick={() => { setEditingStudent(student); setFormData(student); setIsModalOpen(true); }}
+                      onClick={() => { 
+                        setEditingStudent(student); 
+                        const studentData = { ...student };
+                        if (student.nextPaymentDate?.seconds) {
+                          studentData.nextPaymentDate = format(new Date(student.nextPaymentDate.seconds * 1000), 'yyyy-MM-dd');
+                        } else if (student.nextPaymentDate instanceof Date) {
+                          studentData.nextPaymentDate = format(student.nextPaymentDate, 'yyyy-MM-dd');
+                        }
+                        setFormData(studentData); 
+                        setIsModalOpen(true); 
+                      }}
                       className="p-2 bg-gray-50 text-gray-400 hover:text-black rounded-xl transition-colors"
                     >
                       <Edit2 className="w-4 h-4" />
@@ -1226,6 +1251,16 @@ export const StudentsView = ({ belts, students, instructors, plans, classes, eva
                         className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all"
                         value={formData.monthlyFee}
                         onChange={(e) => setFormData({ ...formData, monthlyFee: parseFloat(e.target.value) })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Data do Próximo Vencimento</label>
+                      <input 
+                        required
+                        type="date" 
+                        className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all"
+                        value={formData.nextPaymentDate}
+                        onChange={(e) => setFormData({ ...formData, nextPaymentDate: e.target.value })}
                       />
                     </div>
 

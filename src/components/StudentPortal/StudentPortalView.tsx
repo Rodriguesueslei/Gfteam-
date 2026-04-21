@@ -86,28 +86,55 @@ export const StudentPortalView = ({ students, payments, checkIns, belts, setting
 
   const handlePayment = async () => {
     if (!studentData) return;
+    const loadingToast = toast.loading('Iniciando pagamento...');
     try {
-      const response = await fetch('/api/create-checkout-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          amount: studentData.monthlyFee || 150,
-          studentId: studentData.id,
-          studentName: studentData.name,
-        }),
-      });
+      const provider = settings?.paymentProvider || 'Stripe';
+      
+      if (provider === 'MercadoPago') {
+        const response = await fetch('/api/mercado-pago/create-preference', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            amount: studentData.monthlyFee || 150,
+            studentId: studentData.id,
+            studentName: studentData.name,
+          }),
+        });
 
-      const session = await response.json();
-      if (session.url) {
-        window.location.href = session.url;
+        const preference = await response.json();
+        
+        if (preference.init_point) {
+          toast.success('Redirecionando para o Mercado Pago...', { id: loadingToast });
+          window.location.href = preference.init_point;
+        } else {
+          throw new Error('Falha ao criar preferência de pagamento');
+        }
       } else {
-        throw new Error('Falha ao criar sessão de pagamento');
+        const response = await fetch('/api/create-checkout-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            amount: studentData.monthlyFee || 150,
+            studentId: studentData.id,
+            studentName: studentData.name,
+          }),
+        });
+
+        const session = await response.json();
+        if (session.url) {
+          toast.success('Redirecionando para o Stripe...', { id: loadingToast });
+          window.location.href = session.url;
+        } else {
+          throw new Error('Falha ao criar sessão de pagamento');
+        }
       }
     } catch (error) {
       console.error('Erro no pagamento:', error);
-      toast.error('Erro ao iniciar pagamento. Tente novamente.');
+      toast.error('Erro ao iniciar pagamento. Verifique as configurações de API.', { id: loadingToast });
     }
   };
 

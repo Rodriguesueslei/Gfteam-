@@ -14,7 +14,8 @@ import {
   DollarSign,
   Package,
   Sun,
-  Moon
+  Moon,
+  FileText
 } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
@@ -36,7 +37,8 @@ import {
   useInstallments,
   useEvaluations,
   useGraduations,
-  usePrivateSettings
+  usePrivateSettings,
+  useBackups
 } from './hooks/useFirebaseData';
 import { cn } from './utils/formatters';
 import { Logo } from './components/ui/Logo';
@@ -54,6 +56,7 @@ import { LoadingOverlay } from './components/ui/LoadingOverlay';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { CheckInTabletView } from './components/CheckIn/CheckInTabletView';
 import { StudentPortalView } from './components/StudentPortal/StudentPortalView';
+import { ReportsView } from './components/Financeiro/ReportsView';
 
 const AppContent = () => {
   const { user, loading: authLoading, role, permissions, isApproved, isAdmin, isProfessor, isReceptionist, isCheckInTablet } = useAuth();
@@ -89,6 +92,7 @@ const AppContent = () => {
   const expenses = useExpenses(isAdmin || permissions.finance);
   const settings = useSettings(!!user);
   const secrets = usePrivateSettings(isAdmin);
+  const backups = useBackups(isAdmin);
 
   // Derive linked student IDs for secure data fetching (for parents/students)
   const myStudentIds = React.useMemo(() => {
@@ -266,7 +270,9 @@ const AppContent = () => {
       case 'users':
         return <UsersView users={users} />;
       case 'finance':
-        return <FinanceiroView payments={payments} students={students} plans={plans} expenses={expenses} installments={installments} />;
+        return <FinanceiroView payments={payments} students={students} plans={plans} expenses={expenses} installments={installments} onNavigate={setActiveTab} />;
+      case 'reports':
+        return <ReportsView payments={payments} expenses={expenses} students={students} />;
       case 'inventory':
         return <InventoryView products={products} sales={sales} students={students} />;
       case 'settings':
@@ -281,8 +287,11 @@ const AppContent = () => {
             expenses, 
             products, 
             checkIns, 
-            evaluations 
+            evaluations,
+            plans,
+            instructors
           }} 
+          backups={backups}
         />;
       default:
         return <DashboardView belts={belts} students={students} payments={payments} classes={classes} expenses={expenses} products={products} checkIns={checkIns} onNavigate={setActiveTab} />;
@@ -299,6 +308,7 @@ const AppContent = () => {
     { id: 'checkin', label: 'Check-in', icon: Scan, permission: 'checkin' },
     { id: 'users', label: 'Acessos', icon: ShieldAlert, permission: 'users' },
     { id: 'finance', label: 'Financeiro', icon: CreditCard, permission: 'finance' },
+    { id: 'reports', label: 'Relatórios', icon: FileText, permission: 'finance' },
     { id: 'inventory', label: 'Estoque', icon: ShoppingCart, permission: 'inventory' },
     { id: 'settings', label: 'Configurações', icon: Settings, permission: 'settings' },
   ];

@@ -22,12 +22,14 @@ import { cn } from '../../utils/formatters';
 import { Logo } from '../ui/Logo';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
+import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 
 interface SettingsViewProps {
   belts: any[];
   settings: any;
   secrets?: any;
+  backups?: any[];
   allData?: {
     students: any[];
     payments: any[];
@@ -36,11 +38,14 @@ interface SettingsViewProps {
     products: any[];
     checkIns: any[];
     evaluations: any[];
+    plans: any[];
+    instructors: any[];
   };
 }
 
-export const SettingsView = ({ belts, settings, secrets, allData }: SettingsViewProps) => {
+export const SettingsView = ({ belts, settings, secrets, allData, backups = [] }: SettingsViewProps) => {
   const [activeSubTab, setActiveSubTab] = useState('belts');
+  const [isGeneratingBackup, setIsGeneratingBackup] = useState(false);
   
   // Belts State
   const [isBeltModalOpen, setIsBeltModalOpen] = useState(false);
@@ -59,6 +64,8 @@ export const SettingsView = ({ belts, settings, secrets, allData }: SettingsView
   const [paymentForm, setPaymentForm] = useState({
     stripePublicKey: settings?.stripePublicKey || '',
     stripeSecretKey: secrets?.stripeSecretKey || '',
+    mercadoPagoPublicKey: settings?.mercadoPagoPublicKey || '',
+    mercadoPagoAccessToken: secrets?.mercadoPagoAccessToken || '',
     paymentProvider: settings?.paymentProvider || 'None'
   });
 
@@ -76,6 +83,8 @@ export const SettingsView = ({ belts, settings, secrets, allData }: SettingsView
       setPaymentForm({
         stripePublicKey: settings?.stripePublicKey || '',
         stripeSecretKey: secrets?.stripeSecretKey || '',
+        mercadoPagoPublicKey: settings?.mercadoPagoPublicKey || '',
+        mercadoPagoAccessToken: secrets?.mercadoPagoAccessToken || '',
         paymentProvider: settings?.paymentProvider || 'None'
       });
       setGympassForm({
@@ -139,12 +148,14 @@ export const SettingsView = ({ belts, settings, secrets, allData }: SettingsView
       // Split public and private
       const publicData = {
         stripePublicKey: paymentForm.stripePublicKey,
+        mercadoPagoPublicKey: paymentForm.mercadoPagoPublicKey,
         paymentProvider: paymentForm.paymentProvider,
         updatedAt: serverTimestamp()
       };
       
       const privateData = {
         stripeSecretKey: paymentForm.stripeSecretKey,
+        mercadoPagoAccessToken: paymentForm.mercadoPagoAccessToken,
         updatedAt: serverTimestamp()
       };
 
@@ -181,6 +192,46 @@ export const SettingsView = ({ belts, settings, secrets, allData }: SettingsView
       setIsSavingIntegrations(false);
     }
   };
+
+  const handleCloudBackup = async (type: 'Manual' | 'Automatic' = 'Manual') => {
+    if (!allData) return;
+    setIsGeneratingBackup(true);
+    const loadingToast = type === 'Manual' ? toast.loading("Gerando backup na nuvem...") : null;
+
+    try {
+      const backupData = JSON.stringify(allData);
+      const fileName = `OssManager_Backup_${new Date().toISOString().replace(/:/g, '-')}.json`;
+      
+      await addDoc(collection(db, 'backups'), {
+        fileName,
+        createdAt: serverTimestamp(),
+        size: new Blob([backupData]).size,
+        type,
+        collections: Object.keys(allData),
+        data: backupData // Storing small stringified JSON for demo, usually one would use storage
+      });
+
+      if (loadingToast) toast.success("Backup salvo na nuvem!", { id: loadingToast });
+    } catch (error) {
+      console.error("Backup error:", error);
+      if (loadingToast) toast.error("Erro ao salvar backup.", { id: loadingToast });
+    } finally {
+      setIsGeneratingBackup(false);
+    }
+  };
+
+  // Automatic backup check
+  useEffect(() => {
+    if (activeSubTab === 'data' && backups.length >= 0) {
+      const lastAutomatic = backups.find(b => b.type === 'Automatic');
+      const shouldBackup = !lastAutomatic || 
+        (new Date().getTime() - lastAutomatic.createdAt?.toDate().getTime() > 24 * 60 * 60 * 1000);
+      
+      if (shouldBackup && !isGeneratingBackup) {
+        handleCloudBackup('Automatic');
+      }
+    }
+  }, [activeSubTab, backups]);
 
   const handleExportAllData = () => {
     if (!allData) return;
@@ -333,9 +384,38 @@ export const SettingsView = ({ belts, settings, secrets, allData }: SettingsView
                 >
                   <option value="None">Desativado</option>
                   <option value="Stripe">Stripe (Global)</option>
-                  <option value="MercadoPago">Mercado Pago (Brasil) - Em breve</option>
+                  <option value="MercadoPago">Mercado Pago (Brasil)</option>
                 </select>
               </div>
+
+              {paymentForm.paymentProvider === 'MercadoPago' && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="space-y-4 pt-4 border-t border-gray-100"
+                >
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Mercado Pago Public Key</label>
+                    <input 
+                      type="text"
+                      className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none font-mono text-xs"
+                      placeholder="APP_USR-..."
+                      value={paymentForm.mercadoPagoPublicKey}
+                      onChange={e => setPaymentForm({...paymentForm, mercadoPagoPublicKey: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Mercado Pago Access Token</label>
+                    <input 
+                      type="password"
+                      className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none font-mono text-xs"
+                      placeholder="APP_USR-..."
+                      value={paymentForm.mercadoPagoAccessToken}
+                      onChange={e => setPaymentForm({...paymentForm, mercadoPagoAccessToken: e.target.value})}
+                    />
+                  </div>
+                </motion.div>
+              )}
 
               {paymentForm.paymentProvider === 'Stripe' && (
                 <motion.div 
@@ -450,21 +530,92 @@ export const SettingsView = ({ belts, settings, secrets, allData }: SettingsView
                 )}
               </button>
             </form>
+
+            {/* Mercado Pago Section in Integrations */}
+            <div className="pt-8 border-t border-gray-100 space-y-6">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-blue-100 rounded-2xl">
+                  <CreditCard className="w-6 h-6 text-blue-600" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Mercado Pago</h2>
+                  <p className="text-sm text-gray-500">Configuração rápida para pagamentos via PIX e Cartão.</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleSavePaymentSettings} className="space-y-6">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Public Key</label>
+                    <input 
+                      type="text"
+                      className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none font-mono text-xs"
+                      placeholder="APP_USR-..."
+                      value={paymentForm.mercadoPagoPublicKey}
+                      onChange={e => setPaymentForm({...paymentForm, mercadoPagoPublicKey: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Access Token</label>
+                    <input 
+                      type="password"
+                      className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none font-mono text-xs"
+                      placeholder="APP_USR-..."
+                      value={paymentForm.mercadoPagoAccessToken}
+                      onChange={e => setPaymentForm({...paymentForm, mercadoPagoAccessToken: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="checkbox"
+                    id="enableMP"
+                    checked={paymentForm.paymentProvider === 'MercadoPago'}
+                    onChange={e => setPaymentForm({...paymentForm, paymentProvider: e.target.checked ? 'MercadoPago' : 'None'})}
+                    className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black"
+                  />
+                  <label htmlFor="enableMP" className="text-sm font-bold text-gray-700">Ativar Mercado Pago como provedor principal</label>
+                </div>
+
+                <button 
+                  type="submit" 
+                  disabled={isSavingPayment}
+                  className="w-full py-4 bg-blue-600 text-white font-black rounded-2xl hover:bg-blue-700 transition-all uppercase italic shadow-lg active:scale-95 flex items-center justify-center gap-2"
+                >
+                  {isSavingPayment ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    "Salvar Mercado Pago"
+                  )}
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       )}
 
       {activeSubTab === 'data' && (
-        <div className="max-w-2xl space-y-6">
+        <div className="max-w-4xl space-y-6">
           <div className="p-8 bg-white border border-gray-100 rounded-[32px] shadow-sm space-y-8">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-blue-100 rounded-2xl">
-                <Database className="w-6 h-6 text-blue-600" />
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-blue-100 rounded-2xl">
+                  <Database className="w-6 h-6 text-blue-600" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Gestão de Backups</h2>
+                  <p className="text-sm text-gray-500">Backups automáticos e manuais em nuvem.</p>
+                </div>
               </div>
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Exportação de Dados</h2>
-                <p className="text-sm text-gray-500">Baixe todo o conteúdo do seu banco de dados.</p>
-              </div>
+              <button 
+                onClick={() => handleCloudBackup('Manual')}
+                disabled={isGeneratingBackup}
+                className="px-6 py-3 bg-black text-white font-bold rounded-2xl hover:bg-gray-800 transition-all flex items-center gap-2 italic uppercase tracking-tighter text-xs"
+              >
+                <div className={cn("w-2 h-2 rounded-full bg-emerald-400 animate-pulse", isGeneratingBackup && "bg-gray-400")} />
+                {isGeneratingBackup ? 'Gerando...' : 'Backup Instantâneo'}
+              </button>
             </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -476,7 +627,7 @@ export const SettingsView = ({ belts, settings, secrets, allData }: SettingsView
                   <Download className="w-6 h-6 text-emerald-600" />
                 </div>
                 <span className="font-bold text-gray-900">Exportar Excel</span>
-                <span className="text-[10px] text-gray-400 font-bold uppercase mt-1">Planilha Completa</span>
+                <span className="text-[10px] text-gray-400 font-bold uppercase mt-1">Planilha Local</span>
               </button>
 
               <button 
@@ -494,8 +645,69 @@ export const SettingsView = ({ belts, settings, secrets, allData }: SettingsView
                   <FileJson className="w-6 h-6 text-blue-600" />
                 </div>
                 <span className="font-bold text-gray-900">Exportar JSON</span>
-                <span className="text-[10px] text-gray-400 font-bold uppercase mt-1">Backup Técnico</span>
+                <span className="text-[10px] text-gray-400 font-bold uppercase mt-1">Desenvolvedor</span>
               </button>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-xs font-black uppercase tracking-widest text-gray-400 ml-4">Histórico de Backups na Nuvem</h3>
+              <div className="overflow-hidden border border-gray-50 rounded-[28px]">
+                <table className="w-full text-left">
+                  <thead className="bg-gray-50 border-b border-gray-50">
+                    <tr>
+                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Data</th>
+                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Tipo</th>
+                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500">Tamanho</th>
+                      <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-gray-500 text-right">Ação</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {backups.map(backup => (
+                      <tr key={backup.id} className="hover:bg-gray-50/50 transition-colors">
+                        <td className="px-6 py-4">
+                          <p className="text-xs font-black text-gray-900">
+                            {backup.createdAt?.toDate ? format(backup.createdAt.toDate(), 'dd/MM/yyyy HH:mm') : 'Pendente...'}
+                          </p>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={cn(
+                            "px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest",
+                            backup.type === 'Automatic' ? "bg-blue-50 text-blue-600" : "bg-emerald-50 text-emerald-600"
+                          )}>
+                            {backup.type === 'Automatic' ? 'Automático' : 'Manual'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <p className="text-[10px] font-bold text-gray-400">{(backup.size / 1024).toFixed(1)} KB</p>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <button 
+                            onClick={() => {
+                              if (!backup.data) return;
+                              const blob = new Blob([backup.data], { type: 'application/json' });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = backup.fileName;
+                              a.click();
+                            }}
+                            className="p-2 text-gray-400 hover:text-black transition-colors"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {backups.length === 0 && (
+                      <tr>
+                        <td colSpan={4} className="px-6 py-12 text-center text-gray-400 text-xs italic">
+                          Nenhum backup em nuvem encontrado.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>

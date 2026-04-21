@@ -200,9 +200,38 @@ export const CheckInTabletView = ({ students, classes, settings, plans, checkIns
                 if (bestMatch.label !== 'unknown' && bestMatch.distance < 0.55) {
                   const student = students.find(s => s.id === bestMatch.label);
                   if (student) {
-                    handleCheckIn(student);
-                    stopFacialRecognition();
-                    setIsScanning(false);
+                    // Check if it's a Gympass student
+                    if (student.gympassId) {
+                      setIsScanning(false);
+                      setIsCheckingIn(true);
+                      try {
+                        toast.loading("Validando Wellhub (Gympass)...", { id: 'gympass-auto' });
+                        const response = await fetch('/api/gympass/validate-by-id', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ gympassId: student.gympassId })
+                        });
+                        const data = await response.json();
+                        
+                        if (data.valid) {
+                          toast.success("Check-in Wellhub detectado!", { id: 'gympass-auto' });
+                          handleCheckIn(student, undefined, true);
+                        } else {
+                          toast.error("Check-in não encontrado no App Wellhub. Faça o check-in no celular primeiro.", { id: 'gympass-auto', duration: 5000 });
+                        }
+                      } catch (err) {
+                        toast.error("Erro ao validar Gympass.", { id: 'gympass-auto' });
+                        // Fallback: try normal check-in if API fails but face recognized? 
+                        // Better to show error since Gympass requires the API confirmation.
+                      } finally {
+                        setIsCheckingIn(false);
+                        stopFacialRecognition();
+                      }
+                    } else {
+                      handleCheckIn(student);
+                      stopFacialRecognition();
+                      setIsScanning(false);
+                    }
                     return;
                   }
                 }

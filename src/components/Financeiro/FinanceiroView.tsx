@@ -42,9 +42,10 @@ interface FinanceiroViewProps {
   plans: any[];
   expenses: any[];
   installments: any[];
+  onNavigate: (tab: string) => void;
 }
 
-export const FinanceiroView = ({ payments, students, plans, expenses, installments }: FinanceiroViewProps) => {
+export const FinanceiroView = ({ payments, students, plans, expenses, installments, onNavigate }: FinanceiroViewProps) => {
   const [activeSubTab, setActiveSubTab] = useState('history');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -240,7 +241,10 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
         </div>
         <div className="flex gap-2">
           {isAdmin && (
-            <button className="flex items-center justify-center px-4 py-2 text-sm font-bold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-all">
+            <button 
+              onClick={() => onNavigate('reports')}
+              className="flex items-center justify-center px-4 py-2 text-sm font-bold text-gray-600 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition-all"
+            >
               <Download className="w-4 h-4 mr-2" />
               Relatórios
             </button>

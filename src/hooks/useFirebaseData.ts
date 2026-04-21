@@ -335,3 +335,18 @@ export const usePrivateSettings = (isAdmin: boolean) => {
   }, [isAdmin]);
   return secrets;
 };
+
+export const useBackups = (enabled: boolean) => {
+  const [backups, setBackups] = useState<any[]>([]);
+  useEffect(() => {
+    if (!enabled) return;
+    const q = query(collection(db, 'backups'), orderBy('createdAt', 'desc'), limit(50));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setBackups(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'backups');
+    });
+    return () => unsubscribe();
+  }, [enabled]);
+  return backups;
+};

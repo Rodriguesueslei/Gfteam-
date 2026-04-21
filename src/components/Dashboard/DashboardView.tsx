@@ -41,7 +41,7 @@ interface DashboardViewProps {
 }
 
 export const DashboardView = ({ belts, students, payments, classes, expenses, products, checkIns, onNavigate }: DashboardViewProps) => {
-  const { isAdmin, permissions } = useAuth();
+  const { isAdmin, permissions, gymInfo } = useAuth();
   const [stats, setStats] = useState({
     totalStudents: 0,
     activeStudents: 0,
@@ -157,8 +157,12 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
     <div className="space-y-6 sm:space-y-8 animate-in fade-in transition-all duration-500">
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div className="space-y-1">
-          <h1 className="text-3xl sm:text-4xl font-black text-black dark:text-white italic uppercase tracking-tighter">Dashboard</h1>
-          <p className="text-sm text-gray-500 font-medium">Bem-vindo ao OssManager. Aqui está o resumo da sua academia.</p>
+          <h1 className="text-3xl sm:text-4xl font-black text-black dark:text-white italic uppercase tracking-tighter">
+            {gymInfo?.name || "Dashboard"}
+          </h1>
+          <p className="text-sm text-gray-500 font-medium">
+            {gymInfo ? `Bem-vindo à unidade ${gymInfo.name}.` : "Bem-vindo ao OssManager. Aqui está o resumo da sua academia."}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button 

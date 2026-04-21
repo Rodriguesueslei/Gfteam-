@@ -59,10 +59,24 @@ import { CheckInTabletView } from './components/CheckIn/CheckInTabletView';
 import { StudentPortalView } from './components/StudentPortal/StudentPortalView';
 import { ReportsView } from './components/Financeiro/ReportsView';
 import { SuperAdminView } from './components/SuperAdmin/SuperAdminView';
+import { SetupWizard } from './components/Onboarding/SetupWizard';
 import { ShieldCheck, Lock } from 'lucide-react';
 
 const AppContent = () => {
-  const { user, loading: authLoading, role, permissions, isApproved, isAdmin, isSuperAdmin, isProfessor, isReceptionist, isCheckInTablet, licenseStatus } = useAuth();
+  const { 
+    user, 
+    loading: authLoading, 
+    role, 
+    permissions, 
+    isApproved, 
+    isAdmin, 
+    isSuperAdmin, 
+    isProfessor, 
+    isReceptionist, 
+    isCheckInTablet, 
+    licenseStatus,
+    gymInfo 
+  } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [viewMode, setViewMode] = useState<'professional' | 'student'>('professional');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -148,10 +162,23 @@ const AppContent = () => {
               <Logo size="lg" settings={settings} />
             </div>
             <div className="space-y-2">
-              <h1 className="text-4xl font-serif font-bold text-black italic tracking-tighter leading-none">
-                Gfteam <span className="text-gray-400 font-light not-italic">Limeira</span>
-              </h1>
-              <p className="text-gray-500 font-medium tracking-[0.2em] uppercase text-[9px]">Sistema de Gestão de Academia</p>
+              {gymInfo ? (
+                <>
+                  <h1 className="text-4xl font-serif font-bold text-black italic tracking-tighter leading-none">
+                    {gymInfo.name}
+                  </h1>
+                  <p className="text-gray-500 font-medium tracking-[0.2em] uppercase text-[9px] truncate max-w-xs mx-auto">
+                    Unidade Oficial • {gymInfo.slug}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h1 className="text-4xl font-serif font-bold text-black italic tracking-tighter leading-none">
+                    Gfteam <span className="text-gray-400 font-light not-italic">Limeira</span>
+                  </h1>
+                  <p className="text-gray-500 font-medium tracking-[0.2em] uppercase text-[9px]">Sistema de Gestão de Academia</p>
+                </>
+              )}
             </div>
           </div>
 
@@ -193,6 +220,10 @@ const AppContent = () => {
         </div>
       </div>
     );
+  }
+
+  if (licenseStatus === 'active' && !gymInfo?.config && !isSuperAdmin) {
+    return <SetupWizard />;
   }
 
   if (licenseStatus === 'blocked' && !isSuperAdmin) {
@@ -389,8 +420,21 @@ const AppContent = () => {
               <Logo size="sm" settings={settings} />
             </div>
             <div className="flex flex-col">
-              <span className="text-lg font-serif font-bold text-black dark:text-white italic tracking-tighter leading-none">Gfteam</span>
-              <span className="text-[9px] tracking-[0.2em] font-bold text-gray-400 uppercase">Limeira</span>
+              {gymInfo ? (
+                <>
+                  <span className="text-lg font-serif font-bold text-black dark:text-white italic tracking-tighter leading-none truncate max-w-[120px]">
+                    {gymInfo.name}
+                  </span>
+                  <span className="text-[9px] tracking-[0.2em] font-bold text-gray-400 uppercase truncate">
+                    {gymInfo.slug}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="text-lg font-serif font-bold text-black dark:text-white italic tracking-tighter leading-none">DojoSync</span>
+                  <span className="text-[9px] tracking-[0.2em] font-bold text-gray-400 uppercase">Master Admin</span>
+                </>
+              )}
             </div>
             <button 
               onClick={() => setIsDarkMode(!isDarkMode)}

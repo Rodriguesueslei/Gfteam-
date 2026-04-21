@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
-import { auth, db, logout as firebaseLogout } from '../firebase';
-import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, collection, query, where } from 'firebase/firestore';
+import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import { onAuthStateChanged, User, Auth } from 'firebase/auth';
+import { auth as masterAuth, db as masterDb, createTenantInstance, logout as firebaseLogout } from '../firebase';
+import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, collection, query, where, Firestore } from 'firebase/firestore';
 
 export type UserRole = 'admin' | 'receptionist' | 'professor' | 'user' | 'checkin_tablet' | string;
 
@@ -48,7 +48,16 @@ interface AuthContextType {
   isProfessor: boolean;
   isCheckInTablet: boolean;
   licenseStatus: 'active' | 'blocked' | 'pending' | 'none';
+  gymInfo: {
+    name: string;
+    slug: string;
+    isExternal: boolean;
+    config?: any;
+  } | null;
+  tenantDb: Firestore;
+  masterDb: Firestore;
   logout: () => Promise<void>;
+  updateTenantConfig: (config: any) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
@@ -63,7 +72,11 @@ const AuthContext = createContext<AuthContextType>({
   isProfessor: false,
   isCheckInTablet: false,
   licenseStatus: 'none',
-  logout: async () => {}
+  gymInfo: null,
+  tenantDb: masterDb,
+  masterDb: masterDb,
+  logout: async () => {},
+  updateTenantConfig: async () => {}
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -73,25 +86,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [permissions, setPermissions] = useState<UserPermissions>(DEFAULT_PERMISSIONS.user);
   const [isApproved, setIsApproved] = useState(false);
   const [licenseStatus, setLicenseStatus] = useState<'active' | 'blocked' | 'pending' | 'none'>('none');
+  const [gymInfo, setGymInfo] = useState<{ name: string; slug: string; isExternal: boolean; config?: any; } | null>(null);
+  const [licenseLoading, setLicenseLoading] = useState(false);
   const unsubRoleDocRef = React.useRef<(() => void) | null>(null);
   const unsubLicenseDocRef = React.useRef<(() => void) | null>(null);
+  const unsubGymSlugRef = React.useRef<(() => void) | null>(null);
+
+  // Dynamic Tenant Instances
+  const tenantInstances = useMemo(() => {
+    if (gymInfo?.config) {
+      return createTenantInstance(gymInfo.config);
+    }
+    return { auth: masterAuth, db: masterDb };
+  }, [gymInfo?.config]);
+
+  const tenantDb = tenantInstances.db;
 
   // Helper to fetch and set permissions based on role
   const updatePermissions = async (roleName: string, cleanupRef: { current: (() => void) | null }) => {
-    // Cleanup previous role listener
     if (cleanupRef.current) {
       cleanupRef.current();
       cleanupRef.current = null;
     }
 
-    // Check if it's a legacy role
     if (DEFAULT_PERMISSIONS[roleName]) {
       setPermissions(DEFAULT_PERMISSIONS[roleName]);
       return;
     }
 
-    // Try to find custom role and listen to it
-    cleanupRef.current = onSnapshot(doc(db, 'roles', roleName), (doc) => {
+    cleanupRef.current = onSnapshot(doc(tenantDb, 'roles', roleName), (doc) => {
       if (doc.exists()) {
         const data = doc.data();
         setPermissions((data.permissions as UserPermissions) || DEFAULT_PERMISSIONS.user);
@@ -107,29 +130,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let unsubUserDoc: (() => void) | null = null;
     
-    // Safety timeout for loading state
     const loadingTimeout = setTimeout(() => {
       setLoading(false);
-    }, 8000); // 8 seconds safety
+    }, 8000); 
 
-    const unsubscribeAuth = onAuthStateChanged(auth, async (authUser) => {
+    const unsubscribeAuth = onAuthStateChanged(masterAuth, async (authUser) => {
       try {
         clearTimeout(loadingTimeout);
         setUser(authUser);
 
         if (authUser) {
-          const isOwner = authUser.email === "rodrigues.ueslei@gmail.com";
-          
-          if (isOwner) {
-            setLicenseStatus('active');
-          } else {
-            // Find license for this owner (if they are a gym owner)
-            // This is a bit tricky, but for now we assume the owner is the one with the license
+          if (authUser.email !== "rodrigues.ueslei@gmail.com") {
+            setLicenseLoading(true);
           }
 
-          const userDocRef = doc(db, 'users', authUser.uid);
-          
-          // Initial check and bootstrap
+          // Important: We first check the user in the MASTER DB to see their role and license
+          const userDocRef = doc(masterDb, 'users', authUser.uid);
           const userDoc = await getDoc(userDocRef);
           let currentRole: string = 'user';
           let currentApproved: boolean = false;
@@ -152,7 +168,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             currentRole = data?.role || 'user';
             currentApproved = data?.approved || false;
 
-            // Auto-bootstrap admin email if needed
             if (authUser.email === "rodrigues.ueslei@gmail.com" && (currentRole !== 'admin' || !currentApproved)) {
               currentRole = 'admin';
               currentApproved = true;
@@ -163,32 +178,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setRole(currentRole);
           setIsApproved(currentApproved);
 
-          // Listen for real-time updates to the user document
           unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
             if (docSnap.exists()) {
               const data = docSnap.data();
               const newRole = data.role || 'user';
               const newApproved = data.approved || false;
-              
               setIsApproved(newApproved);
               setRole(newRole);
             }
-          }, (error) => {
-            console.error("Error listening to user document:", error);
           });
         } else {
           setRole('user');
           setPermissions(DEFAULT_PERMISSIONS.user);
           setIsApproved(false);
           setLicenseStatus('none');
-          if (unsubRoleDocRef.current) {
-            unsubRoleDocRef.current();
-            unsubRoleDocRef.current = null;
-          }
-          if (unsubLicenseDocRef.current) {
-            unsubLicenseDocRef.current();
-            unsubLicenseDocRef.current = null;
-          }
+          setGymInfo(null);
         }
       } catch (error) {
         console.error("Auth initialization error:", error);
@@ -203,11 +207,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // License check for gym owners
+  useEffect(() => {
+    if (!user || user.email === "rodrigues.ueslei@gmail.com") {
+      setLicenseLoading(false);
+      return;
+    }
+
+    setLicenseLoading(true);
+    const licenseId = user.email?.toLowerCase().trim();
+    if (!licenseId) {
+      setLicenseLoading(false);
+      return;
+    }
+
+    unsubLicenseDocRef.current = onSnapshot(doc(masterDb, 'licenses', licenseId), (docSnap) => {
+      if (docSnap.exists()) {
+        const license = docSnap.data();
+        setLicenseStatus(license.status as any);
+        setGymInfo({
+          name: license.academyName || 'Nova Academia',
+          slug: license.slug || 'setup',
+          isExternal: true, // Always true now in your new model
+          config: license.externalFirebaseConfig
+        });
+      } else {
+        setLicenseStatus('none');
+        setGymInfo(null);
+      }
+      setLicenseLoading(false);
+    }, (err) => {
+      console.error("Error checking license:", err);
+      setLicenseLoading(false);
+    });
+
+    return () => {
+      if (unsubLicenseDocRef.current) {
+        unsubLicenseDocRef.current();
+        unsubLicenseDocRef.current = null;
+      }
+    };
+  }, [user]);
+
   const isSuperAdmin = user?.email === "rodrigues.ueslei@gmail.com";
-  const isAdmin = role === 'admin' || isSuperAdmin;
-  const isReceptionist = role === 'receptionist';
-  const isProfessor = role === 'professor';
-  const isCheckInTablet = role === 'checkin_tablet';
+  const isLicenseOwner = licenseStatus === 'active';
+  const isAdmin = role === 'admin' || isSuperAdmin || isLicenseOwner;
+  const isApprovedFinal = isApproved || isSuperAdmin || isLicenseOwner;
+
+  useEffect(() => {
+    const effectiveRole = isLicenseOwner ? 'admin' : role;
+    if (user && effectiveRole) {
+      updatePermissions(effectiveRole, unsubRoleDocRef);
+    }
+  }, [user, role, isLicenseOwner, tenantDb]);
 
   const logout = async () => {
     try {
@@ -217,59 +269,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  useEffect(() => {
-    if (user && role) {
-      updatePermissions(role, unsubRoleDocRef);
-    }
-    return () => {
-      if (unsubRoleDocRef.current) {
-        unsubRoleDocRef.current();
-        unsubRoleDocRef.current = null;
-      }
-    };
-  }, [user, role]);
-
-  // License check for gym owners
-  useEffect(() => {
-    if (!user || isSuperAdmin) return;
-
-    const q = query(collection(db, 'licenses'), where('ownerEmail', '==', user.email));
-    
-    unsubLicenseDocRef.current = onSnapshot(q, (snap) => {
-      if (!snap.empty) {
-        const license = snap.docs[0].data();
-        setLicenseStatus(license.status as any);
-      } else {
-        // If not a gym owner, maybe a regular student?
-        // We set to none or handle accordingly
-        setLicenseStatus('none');
-      }
-    }, (err) => {
-      console.error("Error checking license:", err);
-    });
-
-    return () => {
-      if (unsubLicenseDocRef.current) {
-        unsubLicenseDocRef.current();
-        unsubLicenseDocRef.current = null;
-      }
-    };
-  }, [user, isSuperAdmin]);
+  const updateTenantConfig = async (config: any) => {
+    if (!user?.email) return;
+    const licenseId = user.email.toLowerCase().trim();
+    await setDoc(doc(masterDb, 'licenses', licenseId), {
+      externalFirebaseConfig: config,
+      status: 'active' // Ensure it stays active
+    }, { merge: true });
+  };
 
   return (
     <AuthContext.Provider value={{ 
       user, 
-      loading, 
+      loading: loading || licenseLoading, 
       role, 
       permissions, 
-      isApproved, 
+      isApproved: isApprovedFinal, 
       isAdmin, 
       isSuperAdmin,
-      isReceptionist, 
-      isProfessor, 
-      isCheckInTablet,
+      isReceptionist: role === 'receptionist', 
+      isProfessor: role === 'professor', 
+      isCheckInTablet: role === 'checkin_tablet',
       licenseStatus,
-      logout
+      gymInfo,
+      tenantDb,
+      masterDb,
+      logout,
+      updateTenantConfig
     }}>
       {children}
     </AuthContext.Provider>

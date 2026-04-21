@@ -33,23 +33,30 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    function hasRole(role) {
+    function hasAdminLicense() {
       return isAuthenticated() && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-             getUserData().role == role;
+             exists(/databases/$(database)/documents/licenses/$(request.auth.token.email)) &&
+             get(/databases/$(database)/documents/licenses/$(request.auth.token.email)).data.status == 'active';
     }
 
     function isAdmin() {
       return isAuthenticated() && 
              (request.auth.token.email == "rodrigues.ueslei@gmail.com" || 
               request.auth.uid == "MtaH6LrL5vbL8Dp7pZxPeQrEJyP2" ||
-              hasRole('admin'));
+              (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'admin') ||
+              hasAdminLicense());
     }
 
     function isSuperAdmin() {
       return isAuthenticated() && 
              (request.auth.token.email == "rodrigues.ueslei@gmail.com" || 
               request.auth.uid == "MtaH6LrL5vbL8Dp7pZxPeQrEJyP2");
+    }
+
+    function hasRole(role) {
+      return isAuthenticated() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             getUserData().role == role;
     }
 
     function isReceptionist() {
@@ -265,6 +272,8 @@ service cloud.firestore {
 
     match /licenses/{licenseId} {
       allow read, write: if isSuperAdmin();
+      // Allow gym owners to read their own license
+      allow read: if isAuthenticated() && (resource == null || resource.data.ownerEmail == request.auth.token.email);
     }
   }
 }

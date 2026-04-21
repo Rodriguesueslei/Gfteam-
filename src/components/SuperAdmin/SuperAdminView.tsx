@@ -14,10 +14,12 @@ import {
   Mail,
   Trash2,
   Lock,
-  Unlock
+  Unlock,
+  ExternalLink,
+  Copy
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { collection, addDoc, doc, updateDoc, deleteDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, updateDoc, deleteDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { formatCurrency, cn } from '../../utils/formatters';
 import toast from 'react-hot-toast';
@@ -34,18 +36,27 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
   const [formData, setFormData] = useState({
     academyName: '',
     ownerEmail: '',
-    plan: 'basic',
-    expiresAt: format(new Date(new Date().setFullYear(new Date().getFullYear() + 1)), 'yyyy-MM-dd'),
-    isExternal: false,
-    externalConfig: {
-      apiKey: '',
-      authDomain: '',
-      projectId: '',
-      storageBucket: '',
-      messagingSenderId: '',
-      appId: ''
-    }
+    plan: 'enterprise',
+    expiresAt: format(new Date(new Date().setFullYear(new Date().getFullYear() + 1)), 'yyyy-MM-dd')
   });
+
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  const handleDeleteClick = (id: string) => {
+    setDeleteConfirmId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirmId) return;
+    try {
+      await deleteDoc(doc(db, 'licenses', deleteConfirmId));
+      toast.success("Licença excluída.");
+      setDeleteConfirmId(null);
+    } catch (err) {
+      console.error("Delete error:", err);
+      toast.error("Erro ao excluir licença. Verifique suas permissões.");
+    }
+  };
 
   const filteredLicenses = licenses.filter(l => 
     l.academyName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -55,30 +66,36 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
   const handleCreateLicense = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const licenseId = formData.ownerEmail.toLowerCase().trim();
+      const slug = formData.academyName
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
+
       const data: any = {
         academyName: formData.academyName,
-        ownerEmail: formData.ownerEmail,
+        ownerEmail: formData.ownerEmail.toLowerCase().trim(),
+        slug: slug,
         plan: formData.plan,
         status: 'active',
         createdAt: serverTimestamp(),
         expiresAt: Timestamp.fromDate(new Date(formData.expiresAt))
       };
 
-      if (formData.isExternal) {
-        data.externalFirebaseConfig = formData.externalConfig;
-      }
-
-      await addDoc(collection(db, 'licenses'), data);
-      toast.success("Licença criada com sucesso!");
+      await setDoc(doc(db, 'licenses', licenseId), data);
+      toast.success("Academia cadastrada! O dono agora pode configurar o Firebase no primeiro login.");
       setIsModalOpen(false);
       setFormData({
         academyName: '',
         ownerEmail: '',
-        plan: 'basic',
-        expiresAt: format(new Date(new Date().setFullYear(new Date().getFullYear() + 1)), 'yyyy-MM-dd'),
+        plan: 'enterprise',
+        expiresAt: format(new Date(new Date().setFullYear(new Date().getFullYear() + 1)), 'yyyy-MM-dd')
       });
     } catch (err) {
-      toast.error("Erro ao criar licença.");
+      toast.error("Erro ao cadastrar academia.");
     }
   };
 
@@ -89,16 +106,6 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
       toast.success(`Licença ${newStatus === 'active' ? 'ativada' : 'bloqueada'}!`);
     } catch (err) {
       toast.error("Erro ao atualizar status.");
-    }
-  };
-
-  const deleteLicense = async (id: string) => {
-    if (!window.confirm("Deseja realmente excluir esta licença?")) return;
-    try {
-      await deleteDoc(doc(db, 'licenses', id));
-      toast.success("Licença excluída.");
-    } catch (err) {
-      toast.error("Erro ao excluir licença.");
     }
   };
 
@@ -185,6 +192,7 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
             <thead>
               <tr className="bg-gray-50/50">
                 <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Academia / Dono</th>
+                <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Link de Acesso</th>
                 <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Plano</th>
                 <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Expira em</th>
                 <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
@@ -192,23 +200,52 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
-              {filteredLicenses.map(license => (
-                <tr key={license.id} className="group hover:bg-gray-50/50 transition-all text-sm">
-                  <td className="px-8 py-5">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-gray-400">
-                        <Building2 className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <p className="font-black text-gray-900 leading-none mb-1 uppercase italic tracking-tighter">{license.academyName}</p>
-                        <div className="flex items-center gap-1 text-gray-400">
-                          <Mail className="w-3 h-3" />
-                          <span className="text-[10px] font-bold">{license.ownerEmail}</span>
+              {filteredLicenses.map(license => {
+                const gymLink = `${window.location.origin}/?gym=${license.slug || license.id.split('@')[0]}`;
+                
+                return (
+                  <tr key={license.id} className="group hover:bg-gray-50/50 transition-all text-sm">
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-gray-400">
+                          <Building2 className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="font-black text-gray-900 leading-none mb-1 uppercase italic tracking-tighter">{license.academyName}</p>
+                          <div className="flex items-center gap-1 text-gray-400">
+                            <Mail className="w-3 h-3" />
+                            <span className="text-[10px] font-bold">{license.ownerEmail}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </td>
-                  <td className="px-8 py-5">
+                    </td>
+                    <td className="px-8 py-5">
+                      <div className="flex items-center gap-2">
+                        <code className="px-2 py-1 bg-gray-100 rounded text-[10px] font-mono text-gray-500 max-w-[150px] truncate">
+                          {gymLink}
+                        </code>
+                        <button 
+                          onClick={() => {
+                            navigator.clipboard.writeText(gymLink);
+                            toast.success("Link copiado!");
+                          }}
+                          className="p-1.5 text-gray-400 hover:text-black hover:bg-gray-100 rounded-lg transition-all"
+                          title="Copiar Link"
+                        >
+                          <Copy className="w-3 h-3" />
+                        </button>
+                        <a 
+                          href={gymLink} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="p-1.5 text-gray-400 hover:text-emerald-500 hover:bg-emerald-50 rounded-lg transition-all"
+                          title="Abrir Unidade"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                    </td>
+                    <td className="px-8 py-5">
                     <span className="px-3 py-1 bg-gray-100 text-gray-600 text-[10px] font-black uppercase rounded-lg tracking-widest">
                       {license.plan}
                     </span>
@@ -243,7 +280,7 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
                         {license.status === 'active' ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
                       </button>
                       <button 
-                        onClick={() => deleteLicense(license.id)}
+                        onClick={() => handleDeleteClick(license.id)}
                         className="p-2 text-gray-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -251,7 +288,8 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           {filteredLicenses.length === 0 && (
@@ -282,34 +320,36 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
                   className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all font-bold"
                   value={formData.academyName}
                   onChange={e => setFormData({ ...formData, academyName: e.target.value })}
+                  placeholder="Ex: Dojo Central"
                 />
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">E-mail do Responsável</label>
+                <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">E-mail do Responsável (Google Auth)</label>
                 <input 
                   required type="email"
                   className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all font-bold"
                   value={formData.ownerEmail}
                   onChange={e => setFormData({ ...formData, ownerEmail: e.target.value })}
+                  placeholder="email@gmail.com"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Plano</label>
+                  <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Plano Inicial</label>
                   <select 
                     className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all font-bold appearance-none"
                     value={formData.plan}
                     onChange={e => setFormData({ ...formData, plan: e.target.value })}
                   >
-                    <option value="basic">Basic (Mensal)</option>
-                    <option value="pro">Pro (Semestral)</option>
-                    <option value="enterprise">Enterprise (Anual)</option>
+                    <option value="basic">Basic</option>
+                    <option value="pro">Pro</option>
+                    <option value="enterprise">Enterprise</option>
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Expira em</label>
+                  <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Expiração</label>
                   <input 
                     type="date"
                     className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all font-bold"
@@ -319,51 +359,46 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
                 </div>
               </div>
 
-              <div className="p-4 bg-gray-50 rounded-2xl space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Database className="w-4 h-4 text-gray-400" />
-                    <span className="text-xs font-black uppercase tracking-widest text-gray-600">Firebase Próprio</span>
-                  </div>
-                  <button 
-                    type="button"
-                    onClick={() => setFormData({ ...formData, isExternal: !formData.isExternal })}
-                    className={cn(
-                      "w-12 h-6 rounded-full transition-all relative",
-                      formData.isExternal ? "bg-emerald-500" : "bg-gray-300"
-                    )}
-                  >
-                    <div className={cn(
-                      "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
-                      formData.isExternal ? "left-7" : "left-1"
-                    )} />
-                  </button>
-                </div>
-                
-                {formData.isExternal && (
-                  <div className="grid grid-cols-2 gap-3 pt-2 animate-in slide-in-from-top-2 duration-300">
-                    {['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'].map(field => (
-                      <div key={field} className="space-y-1">
-                        <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">{field}</label>
-                        <input 
-                          type="text"
-                          className="w-full px-3 py-2 bg-white border border-gray-100 rounded-xl text-[10px] focus:ring-1 focus:ring-gray-200 outline-none transition-all font-mono"
-                          value={(formData.externalConfig as any)[field]}
-                          onChange={e => setFormData({ 
-                            ...formData, 
-                            externalConfig: { ...formData.externalConfig, [field]: e.target.value }
-                          })}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
+              <div className="p-4 bg-emerald-50 rounded-2xl flex items-center gap-4 text-emerald-600">
+                <AlertCircle className="w-5 h-5 flex-shrink-0" />
+                <p className="text-[10px] font-bold uppercase leading-tight">
+                  Após o cadastro, o dono da academia deverá vincular o Firebase dele ao logar pela primeira vez.
+                </p>
               </div>
 
               <button type="submit" className="w-full py-5 bg-black text-white font-black text-lg rounded-2xl hover:bg-gray-800 transition-all shadow-xl uppercase italic tracking-tighter">
-                Criar Licença de Acesso
+                Cadastrar e Liberar Acesso
               </button>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Modal Confirmação de Exclusão */}
+      {deleteConfirmId && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+          <div onClick={() => setDeleteConfirmId(null)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative w-full max-w-sm bg-white rounded-[32px] shadow-2xl p-8 animate-in fade-in zoom-in duration-300 text-center">
+            <div className="w-16 h-16 bg-rose-50 rounded-full flex items-center justify-center mx-auto mb-6">
+              <AlertCircle className="w-8 h-8 text-rose-500" />
+            </div>
+            <h2 className="text-xl font-black text-gray-900 mb-2 uppercase tracking-tight italic">Excluir Licença?</h2>
+            <p className="text-gray-500 text-sm mb-8 leading-relaxed">
+              Esta ação removerá o acesso da academia permanentemente. Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={confirmDelete}
+                className="w-full py-4 bg-rose-500 text-white font-black rounded-2xl hover:bg-rose-600 transition-all uppercase tracking-tighter italic"
+              >
+                Sim, Excluir Agora
+              </button>
+              <button 
+                onClick={() => setDeleteConfirmId(null)}
+                className="w-full py-4 bg-gray-100 text-gray-600 font-bold rounded-2xl hover:bg-gray-200 transition-all uppercase tracking-tighter"
+              >
+                Cancelar
+              </button>
+            </div>
           </div>
         </div>
       )}

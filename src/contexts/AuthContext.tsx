@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { auth, db, logout as firebaseLogout } from '../firebase';
-import { doc, getDoc, setDoc, serverTimestamp, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, collection, query, where } from 'firebase/firestore';
 
 export type UserRole = 'admin' | 'receptionist' | 'professor' | 'user' | 'checkin_tablet' | string;
 
@@ -43,9 +43,11 @@ interface AuthContextType {
   permissions: UserPermissions;
   isApproved: boolean;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   isReceptionist: boolean;
   isProfessor: boolean;
   isCheckInTablet: boolean;
+  licenseStatus: 'active' | 'blocked' | 'pending' | 'none';
   logout: () => Promise<void>;
 }
 
@@ -56,9 +58,11 @@ const AuthContext = createContext<AuthContextType>({
   permissions: DEFAULT_PERMISSIONS.user,
   isApproved: false,
   isAdmin: false,
+  isSuperAdmin: false,
   isReceptionist: false,
   isProfessor: false,
   isCheckInTablet: false,
+  licenseStatus: 'none',
   logout: async () => {}
 });
 
@@ -68,7 +72,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<UserRole>('user');
   const [permissions, setPermissions] = useState<UserPermissions>(DEFAULT_PERMISSIONS.user);
   const [isApproved, setIsApproved] = useState(false);
+  const [licenseStatus, setLicenseStatus] = useState<'active' | 'blocked' | 'pending' | 'none'>('none');
   const unsubRoleDocRef = React.useRef<(() => void) | null>(null);
+  const unsubLicenseDocRef = React.useRef<(() => void) | null>(null);
 
   // Helper to fetch and set permissions based on role
   const updatePermissions = async (roleName: string, cleanupRef: { current: (() => void) | null }) => {
@@ -112,6 +118,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(authUser);
 
         if (authUser) {
+          const isOwner = authUser.email === "rodrigues.ueslei@gmail.com";
+          
+          if (isOwner) {
+            setLicenseStatus('active');
+          } else {
+            // Find license for this owner (if they are a gym owner)
+            // This is a bit tricky, but for now we assume the owner is the one with the license
+          }
+
           const userDocRef = doc(db, 'users', authUser.uid);
           
           // Initial check and bootstrap
@@ -165,9 +180,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setRole('user');
           setPermissions(DEFAULT_PERMISSIONS.user);
           setIsApproved(false);
+          setLicenseStatus('none');
           if (unsubRoleDocRef.current) {
             unsubRoleDocRef.current();
             unsubRoleDocRef.current = null;
+          }
+          if (unsubLicenseDocRef.current) {
+            unsubLicenseDocRef.current();
+            unsubLicenseDocRef.current = null;
           }
         }
       } catch (error) {
@@ -183,7 +203,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const isAdmin = role === 'admin';
+  const isSuperAdmin = user?.email === "rodrigues.ueslei@gmail.com";
+  const isAdmin = role === 'admin' || isSuperAdmin;
   const isReceptionist = role === 'receptionist';
   const isProfessor = role === 'professor';
   const isCheckInTablet = role === 'checkin_tablet';
@@ -208,6 +229,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user, role]);
 
+  // License check for gym owners
+  useEffect(() => {
+    if (!user || isSuperAdmin) return;
+
+    const q = query(collection(db, 'licenses'), where('ownerEmail', '==', user.email));
+    
+    unsubLicenseDocRef.current = onSnapshot(q, (snap) => {
+      if (!snap.empty) {
+        const license = snap.docs[0].data();
+        setLicenseStatus(license.status as any);
+      } else {
+        // If not a gym owner, maybe a regular student?
+        // We set to none or handle accordingly
+        setLicenseStatus('none');
+      }
+    }, (err) => {
+      console.error("Error checking license:", err);
+    });
+
+    return () => {
+      if (unsubLicenseDocRef.current) {
+        unsubLicenseDocRef.current();
+        unsubLicenseDocRef.current = null;
+      }
+    };
+  }, [user, isSuperAdmin]);
+
   return (
     <AuthContext.Provider value={{ 
       user, 
@@ -216,9 +264,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       permissions, 
       isApproved, 
       isAdmin, 
+      isSuperAdmin,
       isReceptionist, 
       isProfessor, 
       isCheckInTablet,
+      licenseStatus,
       logout
     }}>
       {children}

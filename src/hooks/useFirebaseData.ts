@@ -350,3 +350,18 @@ export const useBackups = (enabled: boolean) => {
   }, [enabled]);
   return backups;
 };
+
+export const useLicenses = (isSuperAdmin: boolean) => {
+  const [licenses, setLicenses] = useState<any[]>([]);
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    const q = query(collection(db, 'licenses'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snap) => {
+      setLicenses(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'licenses');
+    });
+    return () => unsubscribe();
+  }, [isSuperAdmin]);
+  return licenses;
+};

@@ -1,0 +1,372 @@
+import React, { useState } from 'react';
+import { 
+  ShieldCheck, 
+  Plus, 
+  Search, 
+  UserPlus, 
+  X, 
+  MoreVertical, 
+  CheckCircle2, 
+  AlertCircle, 
+  Clock,
+  Database,
+  Building2,
+  Mail,
+  Trash2,
+  Lock,
+  Unlock
+} from 'lucide-react';
+import { format } from 'date-fns';
+import { collection, addDoc, doc, updateDoc, deleteDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../firebase';
+import { formatCurrency, cn } from '../../utils/formatters';
+import toast from 'react-hot-toast';
+
+interface SuperAdminViewProps {
+  licenses: any[];
+}
+
+export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedLicense, setSelectedLicense] = useState<any>(null);
+  
+  const [formData, setFormData] = useState({
+    academyName: '',
+    ownerEmail: '',
+    plan: 'basic',
+    expiresAt: format(new Date(new Date().setFullYear(new Date().getFullYear() + 1)), 'yyyy-MM-dd'),
+    isExternal: false,
+    externalConfig: {
+      apiKey: '',
+      authDomain: '',
+      projectId: '',
+      storageBucket: '',
+      messagingSenderId: '',
+      appId: ''
+    }
+  });
+
+  const filteredLicenses = licenses.filter(l => 
+    l.academyName?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    l.ownerEmail?.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const handleCreateLicense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const data: any = {
+        academyName: formData.academyName,
+        ownerEmail: formData.ownerEmail,
+        plan: formData.plan,
+        status: 'active',
+        createdAt: serverTimestamp(),
+        expiresAt: Timestamp.fromDate(new Date(formData.expiresAt))
+      };
+
+      if (formData.isExternal) {
+        data.externalFirebaseConfig = formData.externalConfig;
+      }
+
+      await addDoc(collection(db, 'licenses'), data);
+      toast.success("Licença criada com sucesso!");
+      setIsModalOpen(false);
+      setFormData({
+        academyName: '',
+        ownerEmail: '',
+        plan: 'basic',
+        expiresAt: format(new Date(new Date().setFullYear(new Date().getFullYear() + 1)), 'yyyy-MM-dd'),
+      });
+    } catch (err) {
+      toast.error("Erro ao criar licença.");
+    }
+  };
+
+  const toggleLicenseStatus = async (license: any) => {
+    try {
+      const newStatus = license.status === 'active' ? 'blocked' : 'active';
+      await updateDoc(doc(db, 'licenses', license.id), { status: newStatus });
+      toast.success(`Licença ${newStatus === 'active' ? 'ativada' : 'bloqueada'}!`);
+    } catch (err) {
+      toast.error("Erro ao atualizar status.");
+    }
+  };
+
+  const deleteLicense = async (id: string) => {
+    if (!window.confirm("Deseja realmente excluir esta licença?")) return;
+    try {
+      await deleteDoc(doc(db, 'licenses', id));
+      toast.success("Licença excluída.");
+    } catch (err) {
+      toast.error("Erro ao excluir licença.");
+    }
+  };
+
+  return (
+    <div className="space-y-8 animate-in fade-in duration-700">
+      <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="p-2 bg-black rounded-lg">
+              <ShieldCheck className="w-5 h-5 text-emerald-400" />
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Master Admin</span>
+          </div>
+          <h1 className="text-4xl font-black text-black italic uppercase tracking-tighter leading-none">Gestão de Licenças</h1>
+          <p className="text-gray-500 font-medium">Controle de academias parceiras e assinaturas.</p>
+        </div>
+        <button 
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center justify-center px-6 py-3 bg-black text-white font-bold rounded-2xl hover:bg-gray-800 transition-all shadow-xl shadow-black/10 italic uppercase tracking-tighter text-xs gap-2"
+        >
+          <Plus className="w-5 h-5" />
+          Nova Academia
+        </button>
+      </header>
+
+      {/* Stats Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="p-6 bg-white border border-gray-100 rounded-[32px] shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-2 bg-emerald-50 rounded-xl">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600">Ativas</span>
+          </div>
+          <p className="text-3xl font-black text-gray-900 italic tracking-tighter">
+            {licenses.filter(l => l.status === 'active').length}
+          </p>
+          <p className="text-xs text-gray-400 font-bold uppercase mt-1">Academias Operando</p>
+        </div>
+        <div className="p-6 bg-white border border-gray-100 rounded-[32px] shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-2 bg-rose-50 rounded-xl">
+              <Lock className="w-5 h-5 text-rose-600" />
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-rose-600">Bloqueadas</span>
+          </div>
+          <p className="text-3xl font-black text-gray-900 italic tracking-tighter">
+            {licenses.filter(l => l.status === 'blocked').length}
+          </p>
+          <p className="text-xs text-gray-400 font-bold uppercase mt-1">Acesso Suspenso</p>
+        </div>
+        <div className="p-6 bg-white border border-gray-100 rounded-[32px] shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-2 bg-amber-50 rounded-xl">
+              <Clock className="w-5 h-5 text-amber-600" />
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-widest text-amber-600">Vencendo</span>
+          </div>
+          <p className="text-3xl font-black text-gray-900 italic tracking-tighter">
+            {licenses.filter(l => l.expiresAt?.seconds && new Date(l.expiresAt.seconds * 1000) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)).length}
+          </p>
+          <p className="text-xs text-gray-400 font-bold uppercase mt-1">Próximos 30 dias</p>
+        </div>
+      </div>
+
+      {/* Licenses Table */}
+      <div className="bg-white border border-gray-100 rounded-[40px] shadow-sm overflow-hidden">
+        <div className="p-8 border-b border-gray-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <h3 className="text-lg font-bold text-gray-900">Total de Academias</h3>
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute w-4 h-4 text-gray-400 left-4 top-1/2 -translate-y-1/2" />
+            <input 
+              type="text" 
+              placeholder="Buscar por academia ou e-mail..." 
+              className="w-full pl-12 pr-6 py-3 bg-gray-50 border-none rounded-2xl text-sm focus:ring-2 focus:ring-gray-200 outline-none transition-all"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left">
+            <thead>
+              <tr className="bg-gray-50/50">
+                <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Academia / Dono</th>
+                <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Plano</th>
+                <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Expira em</th>
+                <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
+                <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {filteredLicenses.map(license => (
+                <tr key={license.id} className="group hover:bg-gray-50/50 transition-all text-sm">
+                  <td className="px-8 py-5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-gray-400">
+                        <Building2 className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="font-black text-gray-900 leading-none mb-1 uppercase italic tracking-tighter">{license.academyName}</p>
+                        <div className="flex items-center gap-1 text-gray-400">
+                          <Mail className="w-3 h-3" />
+                          <span className="text-[10px] font-bold">{license.ownerEmail}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-8 py-5">
+                    <span className="px-3 py-1 bg-gray-100 text-gray-600 text-[10px] font-black uppercase rounded-lg tracking-widest">
+                      {license.plan}
+                    </span>
+                  </td>
+                  <td className="px-8 py-5">
+                    <span className={cn(
+                      "font-bold",
+                      license.expiresAt?.seconds && new Date(license.expiresAt.seconds * 1000) < new Date() ? "text-rose-500" : "text-gray-500"
+                    )}>
+                      {license.expiresAt?.seconds ? format(new Date(license.expiresAt.seconds * 1000), 'dd/MM/yyyy') : 'N/A'}
+                    </span>
+                  </td>
+                  <td className="px-8 py-5">
+                    <div className={cn(
+                      "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest",
+                      license.status === 'active' ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600"
+                    )}>
+                      <div className={cn("w-1.5 h-1.5 rounded-full", license.status === 'active' ? "bg-emerald-500" : "bg-rose-500")} />
+                      {license.status === 'active' ? 'Ativa' : 'Bloqueada'}
+                    </div>
+                  </td>
+                  <td className="px-8 py-5 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <button 
+                        onClick={() => toggleLicenseStatus(license)}
+                        className={cn(
+                          "p-2 rounded-xl transition-all",
+                          license.status === 'active' ? "text-rose-400 hover:bg-rose-50" : "text-emerald-400 hover:bg-emerald-50"
+                        )}
+                        title={license.status === 'active' ? 'Bloquear Acesso' : 'Ativar Acesso'}
+                      >
+                        {license.status === 'active' ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                      </button>
+                      <button 
+                        onClick={() => deleteLicense(license.id)}
+                        className="p-2 text-gray-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filteredLicenses.length === 0 && (
+            <div className="p-20 text-center">
+              <p className="text-gray-400 font-bold uppercase tracking-widest">Nenhuma academia encontrada.</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modal Nova Academia */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          <div onClick={() => setIsModalOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative w-full max-w-lg bg-white rounded-[40px] shadow-2xl overflow-hidden p-8 animate-in fade-in zoom-in duration-300">
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-2xl font-black text-black italic uppercase tracking-tighter">Cadastrar Academia</h2>
+              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateLicense} className="space-y-6">
+              <div className="space-y-2">
+                <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Nome da Academia</label>
+                <input 
+                  required type="text"
+                  className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all font-bold"
+                  value={formData.academyName}
+                  onChange={e => setFormData({ ...formData, academyName: e.target.value })}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">E-mail do Responsável</label>
+                <input 
+                  required type="email"
+                  className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all font-bold"
+                  value={formData.ownerEmail}
+                  onChange={e => setFormData({ ...formData, ownerEmail: e.target.value })}
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Plano</label>
+                  <select 
+                    className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all font-bold appearance-none"
+                    value={formData.plan}
+                    onChange={e => setFormData({ ...formData, plan: e.target.value })}
+                  >
+                    <option value="basic">Basic (Mensal)</option>
+                    <option value="pro">Pro (Semestral)</option>
+                    <option value="enterprise">Enterprise (Anual)</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Expira em</label>
+                  <input 
+                    type="date"
+                    className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all font-bold"
+                    value={formData.expiresAt}
+                    onChange={e => setFormData({ ...formData, expiresAt: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 bg-gray-50 rounded-2xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Database className="w-4 h-4 text-gray-400" />
+                    <span className="text-xs font-black uppercase tracking-widest text-gray-600">Firebase Próprio</span>
+                  </div>
+                  <button 
+                    type="button"
+                    onClick={() => setFormData({ ...formData, isExternal: !formData.isExternal })}
+                    className={cn(
+                      "w-12 h-6 rounded-full transition-all relative",
+                      formData.isExternal ? "bg-emerald-500" : "bg-gray-300"
+                    )}
+                  >
+                    <div className={cn(
+                      "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                      formData.isExternal ? "left-7" : "left-1"
+                    )} />
+                  </button>
+                </div>
+                
+                {formData.isExternal && (
+                  <div className="grid grid-cols-2 gap-3 pt-2 animate-in slide-in-from-top-2 duration-300">
+                    {['apiKey', 'authDomain', 'projectId', 'storageBucket', 'messagingSenderId', 'appId'].map(field => (
+                      <div key={field} className="space-y-1">
+                        <label className="text-[9px] font-black uppercase tracking-widest text-gray-400 ml-1">{field}</label>
+                        <input 
+                          type="text"
+                          className="w-full px-3 py-2 bg-white border border-gray-100 rounded-xl text-[10px] focus:ring-1 focus:ring-gray-200 outline-none transition-all font-mono"
+                          value={(formData.externalConfig as any)[field]}
+                          onChange={e => setFormData({ 
+                            ...formData, 
+                            externalConfig: { ...formData.externalConfig, [field]: e.target.value }
+                          })}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button type="submit" className="w-full py-5 bg-black text-white font-black text-lg rounded-2xl hover:bg-gray-800 transition-all shadow-xl uppercase italic tracking-tighter">
+                Criar Licença de Acesso
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

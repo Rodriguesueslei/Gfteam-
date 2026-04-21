@@ -38,7 +38,8 @@ import {
   useEvaluations,
   useGraduations,
   usePrivateSettings,
-  useBackups
+  useBackups,
+  useLicenses
 } from './hooks/useFirebaseData';
 import { cn } from './utils/formatters';
 import { Logo } from './components/ui/Logo';
@@ -57,9 +58,11 @@ import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { CheckInTabletView } from './components/CheckIn/CheckInTabletView';
 import { StudentPortalView } from './components/StudentPortal/StudentPortalView';
 import { ReportsView } from './components/Financeiro/ReportsView';
+import { SuperAdminView } from './components/SuperAdmin/SuperAdminView';
+import { ShieldCheck, Lock } from 'lucide-react';
 
 const AppContent = () => {
-  const { user, loading: authLoading, role, permissions, isApproved, isAdmin, isProfessor, isReceptionist, isCheckInTablet } = useAuth();
+  const { user, loading: authLoading, role, permissions, isApproved, isAdmin, isSuperAdmin, isProfessor, isReceptionist, isCheckInTablet, licenseStatus } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [viewMode, setViewMode] = useState<'professional' | 'student'>('professional');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
@@ -93,6 +96,7 @@ const AppContent = () => {
   const settings = useSettings(!!user);
   const secrets = usePrivateSettings(isAdmin);
   const backups = useBackups(isAdmin);
+  const licenses = useLicenses(isSuperAdmin);
 
   // Derive linked student IDs for secure data fetching (for parents/students)
   const myStudentIds = React.useMemo(() => {
@@ -169,7 +173,7 @@ const AppContent = () => {
     );
   }
 
-  if (!isApproved && !isAdmin) {
+  if (!isApproved && !isAdmin && !isSuperAdmin) {
     return (
       <div className="min-h-screen bg-black flex flex-col items-center justify-center p-4 text-center">
         <div className="p-10 bg-white/5 backdrop-blur-xl border border-white/10 shadow-2xl rounded-[40px] max-w-md">
@@ -191,8 +195,48 @@ const AppContent = () => {
     );
   }
 
-  if (isCheckInTablet) {
-    return <CheckInTabletView students={students} classes={classes} settings={settings} plans={plans} checkIns={checkIns} />;
+  if (licenseStatus === 'blocked' && !isSuperAdmin) {
+    return (
+      <div className="min-h-screen bg-rose-50 flex flex-col items-center justify-center p-4 text-center">
+        <div className="p-10 bg-white border border-rose-100 shadow-2xl rounded-[40px] max-w-md">
+          <Lock className="w-16 h-16 text-rose-500 mx-auto mb-6" />
+          <h2 className="text-3xl font-black text-rose-900 italic uppercase tracking-tighter mb-4">Acesso Bloqueado</h2>
+          <p className="text-gray-600 mb-8 leading-relaxed">
+            Sua licença de uso deste sistema está temporariamente suspensa. 
+            <br/><br/>
+            Por favor, entre em contato com o administrador do sistema para regularizar sua situação.
+          </p>
+          <button 
+            onClick={logout} 
+            className="w-full py-4 bg-rose-500 text-white font-bold rounded-2xl hover:bg-rose-600 transition-all"
+          >
+            Sair da Conta
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (licenseStatus === 'none' && !isSuperAdmin && role === 'admin') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4 text-center">
+        <div className="p-10 bg-white border border-gray-100 shadow-2xl rounded-[40px] max-w-md">
+          <ShieldAlert className="w-16 h-16 text-amber-500 mx-auto mb-6" />
+          <h2 className="text-3xl font-black text-gray-900 italic uppercase tracking-tighter mb-4">Sem Licença Ativa</h2>
+          <p className="text-gray-600 mb-8 leading-relaxed">
+            Nenhuma licença foi encontrada para o seu e-mail (<strong>{user.email}</strong>).
+            <br/><br/>
+            Se você é dono de uma academia, solicite a ativação ao suporte Master Admin.
+          </p>
+          <button 
+            onClick={logout} 
+            className="w-full py-4 bg-black text-white font-bold rounded-2xl hover:bg-gray-800 transition-all"
+          >
+            Fazer Logout
+          </button>
+        </div>
+      </div>
+    );
   }
 
   if (role === 'user' || (viewMode === 'student' && hasStudentRecord)) {
@@ -275,6 +319,8 @@ const AppContent = () => {
         return <ReportsView payments={payments} expenses={expenses} students={students} />;
       case 'inventory':
         return <InventoryView products={products} sales={sales} students={students} />;
+      case 'superadmin':
+        return <SuperAdminView licenses={licenses} />;
       case 'settings':
         return <SettingsView 
           belts={belts} 
@@ -310,6 +356,7 @@ const AppContent = () => {
     { id: 'finance', label: 'Financeiro', icon: CreditCard, permission: 'finance' },
     { id: 'reports', label: 'Relatórios', icon: FileText, permission: 'finance' },
     { id: 'inventory', label: 'Estoque', icon: ShoppingCart, permission: 'inventory' },
+    ...(isSuperAdmin ? [{ id: 'superadmin', label: 'Master Admin', icon: ShieldCheck, permission: 'all' }] : []),
     { id: 'settings', label: 'Configurações', icon: Settings, permission: 'settings' },
   ];
 

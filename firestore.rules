@@ -46,6 +46,12 @@ service cloud.firestore {
               hasRole('admin'));
     }
 
+    function isSuperAdmin() {
+      return isAuthenticated() && 
+             (request.auth.token.email == "rodrigues.ueslei@gmail.com" || 
+              request.auth.uid == "MtaH6LrL5vbL8Dp7pZxPeQrEJyP2");
+    }
+
     function isReceptionist() {
       return hasRole('receptionist');
     }
@@ -255,6 +261,10 @@ service cloud.firestore {
 
     match /backups/{document=**} {
       allow read, write: if isAdmin();
+    }
+
+    match /licenses/{licenseId} {
+      allow read, write: if isSuperAdmin();
     }
   }
 }

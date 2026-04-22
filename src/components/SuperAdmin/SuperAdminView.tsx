@@ -175,7 +175,7 @@ service cloud.firestore {
             <div className="p-2 bg-black rounded-lg">
               <ShieldCheck className="w-5 h-5 text-emerald-400" />
             </div>
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Master Admin</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Super Admin</span>
           </div>
           <h1 className="text-4xl font-black text-black italic uppercase tracking-tighter leading-none">Gestão de Licenças</h1>
           <p className="text-gray-500 font-medium">Controle de academias parceiras e assinaturas.</p>
@@ -264,6 +264,7 @@ service cloud.firestore {
                 <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Plano</th>
                 <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Expira em</th>
                 <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Status</th>
+                <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Banco</th>
                 <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Ações</th>
               </tr>
             </thead>
@@ -346,15 +347,22 @@ service cloud.firestore {
                       {license.status === 'active' ? 'Ativa' : 'Bloqueada'}
                     </div>
                   </td>
+                  <td className="px-8 py-5">
+                    <button 
+                      onClick={() => handleOpenConfig(license)}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-1.5 rounded-xl text-[9px] font-black uppercase transition-all shadow-sm border",
+                        license.externalFirebaseConfig?.apiKey 
+                          ? "bg-emerald-50 text-emerald-600 border-emerald-100" 
+                          : "bg-indigo-50 text-indigo-600 border-indigo-100"
+                      )}
+                    >
+                      <Database className="w-3 h-3" />
+                      {license.externalFirebaseConfig?.apiKey ? "Ajustar DB" : "Configurar DB"}
+                    </button>
+                  </td>
                   <td className="px-8 py-5 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button 
-                        onClick={() => handleOpenConfig(license)}
-                        className="p-2 text-indigo-400 hover:bg-indigo-50 rounded-xl transition-all"
-                        title="Configurar Banco de Dados"
-                      >
-                        <Database className="w-4 h-4" />
-                      </button>
                       <button 
                         onClick={() => toggleLicenseStatus(license)}
                         className={cn(

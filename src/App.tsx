@@ -415,7 +415,7 @@ const AppContent = () => {
     { id: 'finance', label: 'Financeiro', icon: CreditCard, permission: 'finance' },
     { id: 'reports', label: 'Relatórios', icon: FileText, permission: 'finance' },
     { id: 'inventory', label: 'Estoque', icon: ShoppingCart, permission: 'inventory' },
-    ...(isSuperAdmin ? [{ id: 'superadmin', label: 'Master Admin', icon: ShieldCheck, permission: 'all' }] : []),
+    ...(isSuperAdmin ? [{ id: 'superadmin', label: 'Super Admin', icon: ShieldCheck, permission: 'all' }] : []),
     { id: 'settings', label: 'Configurações', icon: Settings, permission: 'settings' },
   ];
 

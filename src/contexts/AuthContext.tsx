@@ -94,6 +94,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const unsubLicenseDocRef = React.useRef<(() => void) | null>(null);
   const unsubGymSlugRef = React.useRef<(() => void) | null>(null);
 
+  const [gymSlug, setGymSlug] = useState<string | null>(null);
+
+  // Parse gym slug from URL on init
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const slug = params.get('gym');
+    if (slug) setGymSlug(slug);
+  }, []);
+
+  // Fetch Gym Info based on slug or user license
+  useEffect(() => {
+    let unsub: (() => void) | null = null;
+
+    const loadBySlug = async (slug: string) => {
+      const q = query(collection(masterDb, 'licenses'), where('slug', '==', slug));
+      unsub = onSnapshot(q, (snapshot) => {
+        if (!snapshot.empty) {
+          const license = snapshot.docs[0].data();
+          setGymInfo({
+            name: license.academyName || 'Academia',
+            slug: license.slug,
+            isExternal: true,
+            config: license.externalFirebaseConfig
+          });
+          setLicenseStatus('active');
+        } else {
+          setGymInfo(null);
+          setLicenseStatus('none');
+        }
+        setLicenseLoading(false);
+      });
+    };
+
+    if (gymSlug) {
+      setLicenseLoading(true);
+      loadBySlug(gymSlug);
+    } else if (user && user.email !== "rodrigues.ueslei@gmail.com") {
+      // Fallback: check if user is an owner
+      const licenseId = user.email.toLowerCase().trim();
+      unsub = onSnapshot(doc(masterDb, 'licenses', licenseId), (docSnap) => {
+        if (docSnap.exists()) {
+          const license = docSnap.data();
+          setGymInfo({
+            name: license.academyName || 'Academia',
+            slug: license.slug || 'setup',
+            isExternal: true,
+            config: license.externalFirebaseConfig
+          });
+          setLicenseStatus('active');
+        } else {
+          setGymInfo(null);
+          setLicenseStatus('none');
+        }
+        setLicenseLoading(false);
+      });
+    } else {
+      setLicenseLoading(false);
+    }
+
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [gymSlug, user]);
+
   // Dynamic Tenant Instances
   const tenantInstances = useMemo(() => {
     try {
@@ -146,21 +210,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(authUser);
 
         if (authUser) {
-          if (authUser.email !== "rodrigues.ueslei@gmail.com") {
-            setLicenseLoading(true);
-          }
-
-          // Important: We first check the user in the MASTER DB to see their role and license
-          const userDocRef = doc(masterDb, 'users', authUser.uid);
+          const isSuperAdmin = authUser.email === "rodrigues.ueslei@gmail.com";
+          
+          // Determine which database to check for the user record
+          // If we are in a gym context (via slug), use tenantDb.
+          // Otherwise, use masterDb.
+          const targetDb = (gymInfo?.config && !isSuperAdmin) ? tenantDb : masterDb;
+          const userDocRef = doc(targetDb, 'users', authUser.uid);
           const userDoc = await getDoc(userDocRef);
+          
           let currentRole: string = 'user';
           let currentApproved: boolean = false;
 
           if (!userDoc.exists()) {
-            const isDefaultAdmin = authUser.email === "rodrigues.ueslei@gmail.com";
-            currentRole = isDefaultAdmin ? 'admin' : 'user';
-            currentApproved = isDefaultAdmin;
+            currentRole = isSuperAdmin ? 'admin' : 'user';
+            currentApproved = isSuperAdmin;
             
+            // Only create record in master if super admin or owner without gym context
+            // If in gym context, create in tenantDb
             await setDoc(userDocRef, {
               name: authUser.displayName,
               email: authUser.email,
@@ -174,7 +241,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             currentRole = data?.role || 'user';
             currentApproved = data?.approved || false;
 
-            if (authUser.email === "rodrigues.ueslei@gmail.com" && (currentRole !== 'admin' || !currentApproved)) {
+            if (isSuperAdmin && (currentRole !== 'admin' || !currentApproved)) {
               currentRole = 'admin';
               currentApproved = true;
               await setDoc(userDocRef, { role: 'admin', approved: true }, { merge: true });
@@ -211,49 +278,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unsubscribeAuth();
       if (unsubUserDoc) unsubUserDoc();
     };
-  }, []);
-
-  // License check for gym owners
-  useEffect(() => {
-    if (!user || user.email === "rodrigues.ueslei@gmail.com") {
-      setLicenseLoading(false);
-      return;
-    }
-
-    setLicenseLoading(true);
-    const licenseId = user.email?.toLowerCase().trim();
-    if (!licenseId) {
-      setLicenseLoading(false);
-      return;
-    }
-
-    unsubLicenseDocRef.current = onSnapshot(doc(masterDb, 'licenses', licenseId), (docSnap) => {
-      if (docSnap.exists()) {
-        const license = docSnap.data();
-        setLicenseStatus(license.status as any);
-        setGymInfo({
-          name: license.academyName || 'Nova Academia',
-          slug: license.slug || 'setup',
-          isExternal: true, // Always true now in your new model
-          config: license.externalFirebaseConfig
-        });
-      } else {
-        setLicenseStatus('none');
-        setGymInfo(null);
-      }
-      setLicenseLoading(false);
-    }, (err) => {
-      console.error("Error checking license:", err);
-      setLicenseLoading(false);
-    });
-
-    return () => {
-      if (unsubLicenseDocRef.current) {
-        unsubLicenseDocRef.current();
-        unsubLicenseDocRef.current = null;
-      }
-    };
-  }, [user]);
+  }, [gymInfo?.config, tenantDb]); // Re-run when tenant config is ready
 
   const isSuperAdmin = user?.email === "rodrigues.ueslei@gmail.com";
   const isLicenseOwner = licenseStatus === 'active';

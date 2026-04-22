@@ -257,12 +257,13 @@ service cloud.firestore {
                   <button 
                     onClick={() => setShowHelp(!showHelp)}
                     className={cn(
-                      "p-3 rounded-2xl transition-all shadow-sm border",
+                      "flex items-center gap-2 px-4 py-3 rounded-2xl transition-all shadow-sm border font-black uppercase text-[10px] tracking-tighter",
                       showHelp ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-400 hover:text-black border-gray-100"
                     )}
                     title="Ajuda"
                   >
-                    <HelpCircle className="w-5 h-5" />
+                    <HelpCircle className="w-4 h-4" />
+                    Ajuda
                   </button>
                   <button 
                     onClick={() => setShowAIAssistant(!showAIAssistant)}

@@ -96,8 +96,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // Dynamic Tenant Instances
   const tenantInstances = useMemo(() => {
-    if (gymInfo?.config) {
-      return createTenantInstance(gymInfo.config);
+    try {
+      if (gymInfo?.config && gymInfo.config.apiKey) {
+        return createTenantInstance(gymInfo.config);
+      }
+    } catch (err) {
+      console.error("Critical Tenant Init Error:", err);
     }
     return { auth: masterAuth, db: masterDb };
   }, [gymInfo?.config]);

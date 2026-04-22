@@ -128,6 +128,13 @@ service cloud.firestore {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Final Validation
+    if (!config.apiKey || !config.projectId || !config.appId) {
+      toast.error("Configurações incompletas! Use o assistente ou preencha os campos obrigatórios.");
+      return;
+    }
+
     setLoading(true);
     try {
       await updateTenantConfig({
@@ -244,22 +251,25 @@ service cloud.firestore {
 
           {step === 3 && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 overflow-y-auto max-h-[60vh] pr-4 custom-scrollbar">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-3xl font-black text-black italic uppercase tracking-tighter">Configurar Firebase</h2>
-                <div className="flex gap-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-4">
+                <h2 className="text-3xl font-black text-black italic uppercase tracking-tighter leading-none">Configurar Firebase</h2>
+                <div className="flex items-center gap-2">
                   <button 
                     onClick={() => setShowHelp(!showHelp)}
-                    className="p-2 bg-gray-100 text-gray-400 hover:text-black rounded-xl transition-all"
+                    className={cn(
+                      "p-3 rounded-2xl transition-all shadow-sm border",
+                      showHelp ? "bg-blue-600 text-white border-blue-600" : "bg-white text-gray-400 hover:text-black border-gray-100"
+                    )}
                     title="Ajuda"
                   >
                     <HelpCircle className="w-5 h-5" />
                   </button>
                   <button 
                     onClick={() => setShowAIAssistant(!showAIAssistant)}
-                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg shadow-indigo-500/20 hover:scale-105 transition-all"
+                    className="flex items-center gap-2 px-5 py-3 bg-gradient-to-br from-indigo-600 to-purple-700 text-white rounded-2xl text-[11px] font-black uppercase shadow-lg shadow-indigo-200 hover:scale-[1.02] active:scale-95 transition-all"
                   >
-                    <Sparkles className="w-3 h-3" />
-                    {showAIAssistant ? "Manual" : "Assistente IA"}
+                    <Sparkles className="w-4 h-4" />
+                    {showAIAssistant ? "Manual" : "Desejo usar IA"}
                   </button>
                 </div>
               </div>

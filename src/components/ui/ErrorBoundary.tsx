@@ -38,13 +38,25 @@ export class ErrorBoundary extends Component<Props, State> {
                 {this.state.error?.message || "Ocorreu um erro inesperado."}
               </p>
             </div>
-            <button 
-              onClick={() => window.location.reload()} 
-              className="w-full py-4 bg-white text-black font-black rounded-2xl hover:bg-gray-100 transition-all flex items-center justify-center gap-2 uppercase italic tracking-tighter"
-            >
-              <RefreshCw className="w-5 h-5" />
-              Recarregar Sistema
-            </button>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={() => window.location.reload()} 
+                className="w-full py-4 bg-white text-black font-black rounded-2xl hover:bg-gray-100 transition-all flex items-center justify-center gap-2 uppercase italic tracking-tighter"
+              >
+                <RefreshCw className="w-5 h-5" />
+                Recarregar Sistema
+              </button>
+              <button 
+                onClick={() => {
+                  localStorage.clear();
+                  sessionStorage.clear();
+                  window.location.href = '/';
+                }} 
+                className="w-full py-3 bg-white/10 text-white/60 text-[10px] font-black rounded-xl hover:bg-white/20 transition-all uppercase tracking-widest"
+              >
+                Limpar Cache e Sair
+              </button>
+            </div>
           </div>
         </div>
       );

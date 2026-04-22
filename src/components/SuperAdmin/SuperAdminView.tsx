@@ -110,6 +110,47 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
     }
   };
 
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [editingLicense, setEditingLicense] = useState<any>(null);
+  const [configFormData, setConfigFormData] = useState({
+    apiKey: '',
+    authDomain: '',
+    projectId: '',
+    storageBucket: '',
+    messagingSenderId: '',
+    appId: ''
+  });
+
+  const handleOpenConfig = (license: any) => {
+    setEditingLicense(license);
+    const existingConfig = license.externalFirebaseConfig || {};
+    setConfigFormData({
+      apiKey: existingConfig.apiKey || '',
+      authDomain: existingConfig.authDomain || '',
+      projectId: existingConfig.projectId || '',
+      storageBucket: existingConfig.storageBucket || '',
+      messagingSenderId: existingConfig.messagingSenderId || '',
+      appId: existingConfig.appId || ''
+    });
+    setIsConfigModalOpen(true);
+  };
+
+  const handleSaveConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingLicense) return;
+
+    try {
+      await updateDoc(doc(db, 'licenses', editingLicense.id), {
+        externalFirebaseConfig: configFormData
+      });
+      toast.success("Configuração de banco de dados atualizada!");
+      setIsConfigModalOpen(false);
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao salvar configuração.");
+    }
+  };
+
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
 
   const securityRules = `rules_version = '2';
@@ -308,6 +349,13 @@ service cloud.firestore {
                   <td className="px-8 py-5 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button 
+                        onClick={() => handleOpenConfig(license)}
+                        className="p-2 text-indigo-400 hover:bg-indigo-50 rounded-xl transition-all"
+                        title="Configurar Banco de Dados"
+                      >
+                        <Database className="w-4 h-4" />
+                      </button>
+                      <button 
                         onClick={() => toggleLicenseStatus(license)}
                         className={cn(
                           "p-2 rounded-xl transition-all",
@@ -437,6 +485,56 @@ service cloud.firestore {
                 Cancelar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Configuração Firebase */}
+      {isConfigModalOpen && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
+          <div onClick={() => setIsConfigModalOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative w-full max-w-xl bg-white rounded-[40px] shadow-2xl p-10 animate-in fade-in zoom-in duration-300">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-indigo-600 rounded-2xl">
+                  <Database className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black text-black italic uppercase tracking-tighter">Database Config</h2>
+                  <p className="text-indigo-600 text-[10px] font-black uppercase tracking-widest">{editingLicense?.academyName}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setIsConfigModalOpen(false)}
+                className="p-2 hover:bg-gray-50 rounded-full transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveConfig} className="grid grid-cols-2 gap-4">
+              {Object.keys(configFormData).map((key) => (
+                <div key={key} className={cn("space-y-1", key === 'apiKey' || key === 'authDomain' ? "col-span-2" : "")}>
+                  <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-1">{key}</label>
+                  <input 
+                    required
+                    type="text"
+                    className="w-full px-4 py-3 bg-gray-50 border-none rounded-xl focus:ring-2 focus:ring-indigo-100 outline-none transition-all font-mono text-xs"
+                    value={(configFormData as any)[key]}
+                    onChange={e => setConfigFormData({ ...configFormData, [key]: e.target.value })}
+                  />
+                </div>
+              ))}
+
+              <div className="col-span-2 pt-6">
+                <button 
+                  type="submit"
+                  className="w-full py-4 bg-black text-white font-black rounded-2xl hover:bg-gray-800 transition-all shadow-xl uppercase italic tracking-tighter"
+                >
+                  Salvar Configuração Master
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

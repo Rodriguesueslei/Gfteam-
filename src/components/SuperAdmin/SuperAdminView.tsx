@@ -4,6 +4,7 @@ import {
   Plus, 
   Search, 
   UserPlus, 
+  Edit2,
   X, 
   MoreVertical, 
   CheckCircle2, 
@@ -46,6 +47,9 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
     expiresAt: format(new Date(new Date().setFullYear(new Date().getFullYear() + 1)), 'yyyy-MM-dd')
   });
 
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingLicenseId, setEditingLicenseId] = useState<string | null>(null);
+
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const handleDeleteClick = (id: string) => {
@@ -71,29 +75,35 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
 
   const handleCreateLicense = async (e: React.FormEvent) => {
     e.preventDefault();
-    const loadingToast = toast.loading("Criando academia e conta de administrador...");
+    const loadingToast = toast.loading(isEditing ? "Atualizando academia..." : "Criando academia e conta de administrador...");
     try {
       const email = formData.ownerEmail.toLowerCase().trim();
       
-      // 1. Create User in Firebase Auth using a skeleton app to avoid logging out SuperAdmin
-      const tempAppName = `temp-reg-${Date.now()}`;
-      const tempApp = initializeApp(firebaseConfig, tempAppName);
-      const tempAuth = getAuth(tempApp);
+      // If a password is provided (required for create, optional for edit)
+      if (formData.ownerPassword) {
+        // 1. Create User in Firebase Auth using a skeleton app to avoid logging out SuperAdmin
+        const tempAppName = `temp-reg-${Date.now()}`;
+        const tempApp = initializeApp(firebaseConfig, tempAppName);
+        const tempAuth = getAuth(tempApp);
 
-      try {
-        await createUserWithEmailAndPassword(tempAuth, email, formData.ownerPassword);
-        // We log them out of the temp app immediately so it doesn't persist
-        await signOut(tempAuth);
-      } catch (authErr: any) {
-        if (authErr.code !== 'auth/email-already-in-use') {
-          console.error("Auth creation error:", authErr);
-          toast.error("Erro ao criar conta de acesso: " + authErr.message, { id: loadingToast });
-          return;
+        try {
+          await createUserWithEmailAndPassword(tempAuth, email, formData.ownerPassword);
+          await signOut(tempAuth);
+        } catch (authErr: any) {
+          if (authErr.code !== 'auth/email-already-in-use') {
+            console.error("Auth creation error:", authErr);
+            if (!isEditing) { // If creating, this is fatal
+              toast.error("Erro ao criar conta de acesso: " + authErr.message, { id: loadingToast });
+              return;
+            }
+          }
+          // If editing and user exists, we can't update password via web SDK for others
+          if (isEditing && authErr.code === 'auth/email-already-in-use') {
+             // We'll just continue with license doc update
+          }
         }
-        // If email already exists, we just proceed to create the license document
       }
 
-      const licenseId = email;
       const slug = formData.academyName
         .toLowerCase()
         .normalize('NFD')
@@ -108,27 +118,31 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
         ownerEmail: email,
         slug: slug,
         plan: formData.plan,
-        status: 'active',
-        createdAt: serverTimestamp(),
+        status: isEditing ? (licenses.find(l => l.id === editingLicenseId)?.status || 'active') : 'active',
+        updatedAt: serverTimestamp(),
         expiresAt: Timestamp.fromDate(new Date(formData.expiresAt))
       };
 
-      await setDoc(doc(db, 'licenses', licenseId), data);
+      if (!isEditing) {
+        data.createdAt = serverTimestamp();
+      }
+
+      const licenseId = isEditing && editingLicenseId ? editingLicenseId : email;
+      await setDoc(doc(db, 'licenses', licenseId), data, { merge: true });
       
-      // Optional: Create initial user record in master DB as admin
-      // This helps with initial role mapping
-      await setDoc(doc(db, 'users', licenseId), { // Using email as ID or we get the UID?
-        // Actually best to let them log in first to get their real UID, 
-        // but we can pre-approve the email in the license.
+      // Update/Create record in master DB
+      await setDoc(doc(db, 'users', licenseId), {
         name: formData.ownerName,
         email: email,
         role: 'admin',
         approved: true,
-        createdAt: serverTimestamp()
+        updatedAt: serverTimestamp()
       }, { merge: true });
 
-      toast.success("Academia cadastrada com sucesso!", { id: loadingToast });
+      toast.success(isEditing ? "Academia atualizada!" : "Academia cadastrada com sucesso!", { id: loadingToast });
       setIsModalOpen(false);
+      setIsEditing(false);
+      setEditingLicenseId(null);
       setFormData({
         academyName: '',
         ownerName: '',
@@ -138,9 +152,25 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
         expiresAt: format(new Date(new Date().setFullYear(new Date().getFullYear() + 1)), 'yyyy-MM-dd')
       });
     } catch (err) {
-      console.error("Create license error:", err);
-      toast.error("Erro ao cadastrar academia.", { id: loadingToast });
+      console.error("Save license error:", err);
+      toast.error("Erro ao salvar academia.", { id: loadingToast });
     }
+  };
+
+  const handleEditClick = (license: any) => {
+    setIsEditing(true);
+    setEditingLicenseId(license.id);
+    setFormData({
+      academyName: license.academyName || '',
+      ownerName: license.ownerName || '',
+      ownerEmail: license.ownerEmail || '',
+      ownerPassword: '', // Don't show existing password
+      plan: license.plan || 'enterprise',
+      expiresAt: license.expiresAt?.seconds 
+        ? format(new Date(license.expiresAt.seconds * 1000), 'yyyy-MM-dd')
+        : format(new Date(new Date().setFullYear(new Date().getFullYear() + 1)), 'yyyy-MM-dd')
+    });
+    setIsModalOpen(true);
   };
 
   const toggleLicenseStatus = async (license: any) => {
@@ -407,6 +437,13 @@ service cloud.firestore {
                   <td className="px-8 py-5 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button 
+                        onClick={() => handleEditClick(license)}
+                        className="p-2 text-gray-400 hover:text-black hover:bg-gray-100 rounded-xl transition-all"
+                        title="Editar Academia"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button 
                         onClick={() => toggleLicenseStatus(license)}
                         className={cn(
                           "p-2 rounded-xl transition-all",
@@ -440,11 +477,13 @@ service cloud.firestore {
       {/* Modal Nova Academia */}
       {isModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-          <div onClick={() => setIsModalOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-          <div className="relative w-full max-w-lg bg-white rounded-[40px] shadow-2xl overflow-hidden p-8 animate-in fade-in zoom-in duration-300">
+          <div onClick={() => { setIsModalOpen(false); setIsEditing(false); }} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative w-full max-w-lg bg-white rounded-[40px] shadow-2xl overflow-hidden p-8 animate-in fade-in zoom-in duration-300 text-left">
             <div className="flex items-center justify-between mb-8">
-              <h2 className="text-2xl font-black text-black italic uppercase tracking-tighter">Cadastrar Academia</h2>
-              <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+              <h2 className="text-2xl font-black text-black italic uppercase tracking-tighter">
+                {isEditing ? 'Editar Academia' : 'Cadastrar Academia'}
+              </h2>
+              <button onClick={() => { setIsModalOpen(false); setIsEditing(false); }} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -476,7 +515,8 @@ service cloud.firestore {
                   <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">E-mail (Login)</label>
                   <input 
                     required type="email"
-                    className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all font-bold text-sm"
+                    disabled={isEditing}
+                    className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all font-bold text-sm disabled:opacity-50"
                     value={formData.ownerEmail}
                     onChange={e => setFormData({ ...formData, ownerEmail: e.target.value })}
                     placeholder="email@escola.com"
@@ -485,14 +525,22 @@ service cloud.firestore {
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Senha de Acesso</label>
+                <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">
+                  {isEditing ? 'Nova Senha (deixe vazio para manter)' : 'Senha de Acesso'}
+                </label>
                 <input 
-                  required type="text" // Using text so SuperAdmin can see what they set
+                  required={!isEditing}
+                  type="text"
                   className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all font-mono text-sm"
                   value={formData.ownerPassword}
                   onChange={e => setFormData({ ...formData, ownerPassword: e.target.value })}
-                  placeholder="Senha inicial"
+                  placeholder={isEditing ? "Alterar senha..." : "Senha inicial"}
                 />
+                {isEditing && (
+                  <p className="text-[10px] text-gray-400 italic px-2">
+                    Nota: O Super Admin não pode redefinir senhas de contas já criadas via Web SDK. Caso a conta já exista, este campo não terá efeito. Solicite ao usuário o uso de "Esqueci minha senha".
+                  </p>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

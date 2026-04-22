@@ -1,15 +1,20 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Database, ShieldCheck, Rocket, ChevronRight, AlertCircle, CheckCircle2, Palette, Terminal, Copy, ExternalLink, Info, Sparkles, Wand2, Send, Bot } from 'lucide-react';
+import { Database, ShieldCheck, Rocket, ChevronRight, AlertCircle, CheckCircle2, Palette, Terminal, Copy, ExternalLink, Info, Sparkles, Wand2, Send, Bot, HelpCircle, Eye, EyeOff, Activity } from 'lucide-react';
 import { cn } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { GoogleGenAI, Type } from "@google/genai";
+import { initializeApp, deleteApp } from 'firebase/app';
+import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 
 export const SetupWizard = () => {
   const { user, updateTenantConfig } = useAuth();
   const [step, setStep] = useState(1);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [aiInput, setAiInput] = useState('');
   const [config, setConfig] = useState({
     apiKey: '',
@@ -27,13 +32,46 @@ export const SetupWizard = () => {
 
   const ai = new GoogleGenAI({ apiKey: (process.env as any).GEMINI_API_KEY });
 
+  const testConfig = async () => {
+    setTestingConnection(true);
+    setConnectionStatus('idle');
+    const testAppName = `test-app-${Date.now()}`;
+    let testApp;
+    try {
+      testApp = initializeApp(config, testAppName);
+      const db = getFirestore(testApp);
+      // We don't try to read a doc because rules might not be set yet.
+      // Just confirming initialization and basic structure.
+      if (config.apiKey && config.projectId && config.appId) {
+        setConnectionStatus('success');
+        toast.success("Configuração validada com sucesso!");
+      } else {
+        throw new Error("Campos obrigatórios faltando.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      setConnectionStatus('error');
+      toast.error("Erro na validação: " + (err.message || "Verifique os campos."));
+    } finally {
+      if (testApp) await deleteApp(testApp);
+      setTestingConnection(false);
+    }
+  };
+
   const handleAIAssist = async () => {
     if (!aiInput.trim()) return;
     setAiLoading(true);
     try {
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `Extraia as configurações do Firebase (apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId) deste código/texto e retorne apenas o JSON puro, sem markdown ou explicações. Se não encontrar, retorne um erro amigável em JSON com a chave "error". Texto: ${aiInput}`,
+        contents: `Analise o texto abaixo e extraia as chaves de configuração do Firebase. 
+          O usuário pode ter colado o objeto 'firebaseConfig' completo ou apenas partes.
+          Retorne um JSON com: apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId.
+          Se um campo não for encontrado, deixe em branco.
+          IMPORTANTE: Não invente dados. Se o texto for inválido, retorne um erro amigável em JSON.
+          
+          Texto para analisar:
+          ${aiInput}`,
         config: {
           responseMimeType: "application/json",
           responseSchema: {
@@ -63,12 +101,12 @@ export const SetupWizard = () => {
           messagingSenderId: result.messagingSenderId || '',
           appId: result.appId || ''
         });
-        toast.success("Dados extraídos com sucesso pela IA!");
+        toast.success("Dados extraídos com sucesso!");
         setShowAIAssistant(false);
       }
     } catch (err) {
       console.error(err);
-      toast.error("Erro ao processar com IA. Tente colar os campos manualmente.");
+      toast.error("Erro ao processar. Tente colar apenas o bloco de código do Config.");
     } finally {
       setAiLoading(false);
     }
@@ -208,14 +246,47 @@ service cloud.firestore {
             <div className="animate-in fade-in slide-in-from-right-4 duration-500 overflow-y-auto max-h-[60vh] pr-4 custom-scrollbar">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-3xl font-black text-black italic uppercase tracking-tighter">Configurar Firebase</h2>
-                <button 
-                  onClick={() => setShowAIAssistant(!showAIAssistant)}
-                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg shadow-indigo-500/20 hover:scale-105 transition-all"
-                >
-                  <Sparkles className="w-3 h-3" />
-                  {showAIAssistant ? "Manual" : "Assistente IA"}
-                </button>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => setShowHelp(!showHelp)}
+                    className="p-2 bg-gray-100 text-gray-400 hover:text-black rounded-xl transition-all"
+                    title="Ajuda"
+                  >
+                    <HelpCircle className="w-5 h-5" />
+                  </button>
+                  <button 
+                    onClick={() => setShowAIAssistant(!showAIAssistant)}
+                    className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg shadow-indigo-500/20 hover:scale-105 transition-all"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    {showAIAssistant ? "Manual" : "Assistente IA"}
+                  </button>
+                </div>
               </div>
+
+              {showHelp && (
+                <div className="mb-6 p-6 bg-blue-50/50 rounded-3xl border border-blue-100 space-y-4 animate-in slide-in-from-top-4 duration-300">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-blue-600 rounded-lg">
+                      <HelpCircle className="w-4 h-4 text-white" />
+                    </div>
+                    <h4 className="text-sm font-black text-blue-900 uppercase italic">Guia Rápido Firebase</h4>
+                  </div>
+                  <div className="space-y-3 text-[11px] text-blue-700 font-medium">
+                    <p>1. No seu console, vá em <b>Configurações do Projeto</b> (Engrenagem).</p>
+                    <p>2. Role até a seção <b>Seus Aplicativos</b>.</p>
+                    <p>3. Clique no ícone <b>{"</>"} (Web)</b> se não tiver um app criado.</p>
+                    <p>4. Procure pelo objeto <code className="bg-blue-100 px-1 rounded">firebaseConfig</code>.</p>
+                    <p className="font-black">DICA: Use o Assistente IA para preencher tudo de uma vez!</p>
+                  </div>
+                  <button 
+                    onClick={() => setShowHelp(false)}
+                    className="w-full py-2 text-[10px] uppercase font-black text-blue-400 hover:text-blue-600 transition-all"
+                  >
+                    Fechar Guia
+                  </button>
+                </div>
+              )}
 
               {showAIAssistant ? (
                 <div className="mb-8 p-6 bg-indigo-50/50 rounded-3xl border border-indigo-100 animate-in zoom-in duration-300">
@@ -298,6 +369,34 @@ service cloud.firestore {
                     />
                   </div>
                 ))}
+
+                <div className="col-span-2 pt-2">
+                  <button 
+                    type="button"
+                    onClick={testConfig}
+                    disabled={testingConnection}
+                    className={cn(
+                      "w-full py-3 rounded-xl border-2 flex items-center justify-center gap-2 text-[10px] font-black uppercase transition-all",
+                      connectionStatus === 'success' ? "border-emerald-500 text-emerald-500 bg-emerald-50" :
+                      connectionStatus === 'error' ? "border-rose-500 text-rose-500 bg-rose-50" :
+                      "border-gray-100 text-gray-400 hover:border-black hover:text-black"
+                    )}
+                  >
+                    {testingConnection ? (
+                      <Activity className="w-3 h-3 animate-pulse" />
+                    ) : connectionStatus === 'success' ? (
+                      <CheckCircle2 className="w-3 h-3" />
+                    ) : connectionStatus === 'error' ? (
+                      <AlertCircle className="w-3 h-3" />
+                    ) : (
+                      <Activity className="w-3 h-3" />
+                    )}
+                    {testingConnection ? 'Testando...' : 
+                     connectionStatus === 'success' ? 'Conexão OK' :
+                     connectionStatus === 'error' ? 'Falha no Teste' :
+                     'Testar Configuração'}
+                  </button>
+                </div>
                 
                 <div className="col-span-2 pt-6 flex gap-4">
                   <button 

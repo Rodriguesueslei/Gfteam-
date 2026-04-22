@@ -184,7 +184,18 @@ const AppContent = () => {
 
           <div className="p-1 bg-white rounded-[32px] shadow-2xl shadow-black/5 border border-gray-100">
             <button 
-              onClick={signInWithGoogle}
+              onClick={async () => {
+                try {
+                  await signInWithGoogle();
+                } catch (error: any) {
+                  console.error("Login component error:", error);
+                  if (error.code === 'auth/unauthorized-domain') {
+                    toast.error("Este domínio não está autorizado no Firebase. Adicione o link do Netlify nos 'Domínios Autorizados' no Console do Firebase.");
+                  } else {
+                    toast.error("Erro ao fazer login: " + (error.message || "Tente novamente."));
+                  }
+                }
+              }}
               className="w-full flex items-center justify-center gap-4 px-8 py-5 bg-black text-white font-bold text-lg rounded-[28px] hover:bg-gray-900 transition-all active:scale-[0.98] shadow-xl"
             >
               <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6 brightness-0 invert" alt="" />

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
 import { onAuthStateChanged, User, Auth } from 'firebase/auth';
 import { auth as masterAuth, db as masterDb, createTenantInstance, logout as firebaseLogout } from '../firebase';
 import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, collection, query, where, Firestore } from 'firebase/firestore';
@@ -106,10 +106,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Fetch Gym Info based on slug or user license
   useEffect(() => {
     let unsub: (() => void) | null = null;
+    console.log("AuthContext: Fetching Gym Info. slug:", gymSlug, "user:", user?.email);
 
     const loadBySlug = async (slug: string) => {
+      console.log("AuthContext: Loading by slug:", slug);
       const q = query(collection(masterDb, 'licenses'), where('slug', '==', slug));
       unsub = onSnapshot(q, (snapshot) => {
+        console.log("AuthContext: Slug snapshot received. Empty?", snapshot.empty);
         if (!snapshot.empty) {
           const license = snapshot.docs[0].data();
           setGymInfo({
@@ -124,6 +127,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setLicenseStatus('none');
         }
         setLicenseLoading(false);
+      }, (err) => {
+        console.error("AuthContext: Slug load error:", err);
+        setLicenseLoading(false);
       });
     };
 
@@ -131,9 +137,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLicenseLoading(true);
       loadBySlug(gymSlug);
     } else if (user && user.email !== "rodrigues.ueslei@gmail.com") {
-      // Fallback: check if user is an owner
+      setLicenseLoading(true);
       const licenseId = user.email.toLowerCase().trim();
+      console.log("AuthContext: User is not super admin, checking license for:", licenseId);
       unsub = onSnapshot(doc(masterDb, 'licenses', licenseId), (docSnap) => {
+        console.log("AuthContext: License snapshot received. Exists?", docSnap.exists());
         if (docSnap.exists()) {
           const license = docSnap.data();
           setGymInfo({
@@ -142,15 +150,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             isExternal: true,
             config: license.externalFirebaseConfig
           });
-          setLicenseStatus('active');
+          setLicenseStatus(license.status || 'active');
         } else {
           setGymInfo(null);
           setLicenseStatus('none');
         }
         setLicenseLoading(false);
+      }, (err) => {
+        console.error("AuthContext: License load error:", err);
+        setLicenseLoading(false);
       });
     } else {
+      console.log("AuthContext: No slug and user is super admin or null. clearing gym info.");
       setLicenseLoading(false);
+      setGymInfo(null);
+      setLicenseStatus('none');
     }
 
     return () => {
@@ -161,16 +175,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Dynamic Tenant Instances
   const tenantInstances = useMemo(() => {
     try {
-      if (gymInfo?.config && gymInfo.config.apiKey) {
+      // Use specific fields for stability
+      const configKey = gymInfo?.config?.apiKey;
+      const configId = gymInfo?.config?.projectId;
+      
+      if (configKey && configId) {
         return createTenantInstance(gymInfo.config);
       }
     } catch (err) {
       console.error("Critical Tenant Init Error:", err);
     }
     return { auth: masterAuth, db: masterDb };
-  }, [gymInfo?.config]);
+  }, [gymInfo?.config?.apiKey, gymInfo?.config?.projectId]); // Stable dependencies
 
   const tenantDb = tenantInstances.db;
+
+  // Failsafe to ensure app doesn't stay stuck on "Autenticando"
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (loading) {
+        console.warn("AuthContext: Failsafe triggered. Forcing loading=false");
+        setLoading(false);
+      }
+    }, 10000); // 10 seconds max
+    return () => clearTimeout(timer);
+  }, [loading]);
 
   // Helper to fetch and set permissions based on role
   const updatePermissions = async (roleName: string, cleanupRef: { current: (() => void) | null }) => {
@@ -216,26 +245,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // 2. Fetch User Profile and Role (Master or Tenant)
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      console.log("AuthContext: No user yet in Profile Effect.");
+      return;
+    }
 
     let unsubUserDoc: (() => void) | null = null;
     
     // We wait for gymInfo to be resolved (either found by slug or missing) 
     // before determining where to look for the user profile.
-    // If gymLoading is true, we wait.
-    if (licenseLoading) return;
+    if (licenseLoading) {
+      console.log("AuthContext: License is still loading, waiting for Profile Setup.");
+      return;
+    }
 
     const setupUserProfile = async () => {
       try {
         const isSuperAdmin = user.email === "rodrigues.ueslei@gmail.com";
-        const targetDb = (gymInfo?.config && !isSuperAdmin) ? tenantDb : masterDb;
-        const userDocRef = doc(targetDb, 'users', user.uid);
+        const hasExternalConfig = gymInfo?.config && gymInfo.config.apiKey;
+        const targetDb = (hasExternalConfig && !isSuperAdmin) ? tenantDb : masterDb;
         
+        console.log("AuthContext: Setting up Profile. targetDb is", (hasExternalConfig && !isSuperAdmin) ? "TENANT" : "MASTER");
+        
+        const userDocRef = doc(targetDb, 'users', user.uid);
         const userDoc = await getDoc(userDocRef);
+        
         let currentRole: string = 'user';
         let currentApproved: boolean = false;
 
         if (!userDoc.exists()) {
+          console.log("AuthContext: User profile not found, creating default.");
           currentRole = isSuperAdmin ? 'admin' : 'user';
           currentApproved = isSuperAdmin;
           
@@ -249,6 +288,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
         } else {
           const data = userDoc.data();
+          console.log("AuthContext: Profile loaded. Role:", data?.role);
           currentRole = data?.role || 'user';
           currentApproved = data?.approved || false;
 
@@ -274,8 +314,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
 
       } catch (error) {
-        console.error("Error setting up user profile:", error);
+        console.error("AuthContext: Profile setup error:", error);
       } finally {
+        console.log("AuthContext: Profile setup complete, setting loading=false");
         setLoading(false);
       }
     };
@@ -285,7 +326,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => {
       if (unsubUserDoc) unsubUserDoc();
     };
-  }, [user, gymInfo?.config, tenantDb, licenseLoading]);
+  }, [user, gymInfo?.config?.apiKey, tenantDb, licenseLoading]); // Use more specific dependencies
 
   const isSuperAdmin = user?.email === "rodrigues.ueslei@gmail.com";
   const isLicenseOwner = licenseStatus === 'active';
@@ -326,20 +367,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await setDoc(doc(masterDb, 'licenses', licenseId), updatePayload, { merge: true });
   };
 
-  const syncGymStats = async (stats: { studentCount: number }) => {
+  const syncGymStats = useCallback(async (stats: { studentCount: number }) => {
     if (!user?.email || isSuperAdmin) return;
     const licenseId = user.email.toLowerCase().trim();
     try {
       await setDoc(doc(masterDb, 'licenses', licenseId), {
         stats: {
-          ...stats,
+          studentCount: stats.studentCount,
           lastSync: serverTimestamp()
         }
       }, { merge: true });
     } catch (e) {
       console.error("Master sync error:", e);
     }
-  };
+  }, [user?.email, isSuperAdmin]);
 
   return (
     <AuthContext.Provider value={{ 

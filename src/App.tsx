@@ -149,11 +149,18 @@ const AppContent = () => {
   const isLoading = authLoading || (!!user && !dataLoaded);
 
   // Sync basic stats to Master DB (for SuperAdmin health check)
+  // Use a ref to prevent frequent updates
+  const lastSyncRef = React.useRef(0);
   useEffect(() => {
-    if (user && gymInfo && !isSuperAdmin && students && students.length >= 0) {
-      syncGymStats({ studentCount: students.length });
+    if (user && gymInfo?.slug && !isSuperAdmin && students && students.length >= 0) {
+      const now = Date.now();
+      // Only sync once every 5 minutes to avoid loops and excessive writes
+      if (now - lastSyncRef.current > 5 * 60 * 1000) {
+        lastSyncRef.current = now;
+        syncGymStats({ studentCount: students.length });
+      }
     }
-  }, [students.length, user, gymInfo, isSuperAdmin, syncGymStats]);
+  }, [students.length, user?.uid, gymInfo?.slug, isSuperAdmin, syncGymStats]);
 
   // Inject Branding CSS Variables
   useEffect(() => {

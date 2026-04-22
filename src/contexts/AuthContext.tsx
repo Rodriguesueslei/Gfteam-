@@ -197,88 +197,95 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  // 1. Listen to Auth State
   useEffect(() => {
-    let unsubUserDoc: (() => void) | null = null;
-    
-    const loadingTimeout = setTimeout(() => {
-      setLoading(false);
-    }, 8000); 
-
-    const unsubscribeAuth = onAuthStateChanged(masterAuth, async (authUser) => {
-      try {
-        clearTimeout(loadingTimeout);
-        setUser(authUser);
-
-        if (authUser) {
-          const isSuperAdmin = authUser.email === "rodrigues.ueslei@gmail.com";
-          
-          // Determine which database to check for the user record
-          // If we are in a gym context (via slug), use tenantDb.
-          // Otherwise, use masterDb.
-          const targetDb = (gymInfo?.config && !isSuperAdmin) ? tenantDb : masterDb;
-          const userDocRef = doc(targetDb, 'users', authUser.uid);
-          const userDoc = await getDoc(userDocRef);
-          
-          let currentRole: string = 'user';
-          let currentApproved: boolean = false;
-
-          if (!userDoc.exists()) {
-            currentRole = isSuperAdmin ? 'admin' : 'user';
-            currentApproved = isSuperAdmin;
-            
-            // Only create record in master if super admin or owner without gym context
-            // If in gym context, create in tenantDb
-            await setDoc(userDocRef, {
-              name: authUser.displayName,
-              email: authUser.email,
-              photoURL: authUser.photoURL,
-              role: currentRole,
-              approved: currentApproved,
-              createdAt: serverTimestamp()
-            });
-          } else {
-            const data = userDoc.data();
-            currentRole = data?.role || 'user';
-            currentApproved = data?.approved || false;
-
-            if (isSuperAdmin && (currentRole !== 'admin' || !currentApproved)) {
-              currentRole = 'admin';
-              currentApproved = true;
-              await setDoc(userDocRef, { role: 'admin', approved: true }, { merge: true });
-            }
-          }
-
-          setRole(currentRole);
-          setIsApproved(currentApproved);
-
-          unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
-            if (docSnap.exists()) {
-              const data = docSnap.data();
-              const newRole = data.role || 'user';
-              const newApproved = data.approved || false;
-              setIsApproved(newApproved);
-              setRole(newRole);
-            }
-          });
-        } else {
-          setRole('user');
-          setPermissions(DEFAULT_PERMISSIONS.user);
-          setIsApproved(false);
-          setLicenseStatus('none');
-          setGymInfo(null);
-        }
-      } catch (error) {
-        console.error("Auth initialization error:", error);
-      } finally {
+    const unsubscribeAuth = onAuthStateChanged(masterAuth, (authUser) => {
+      setUser(authUser);
+      if (!authUser) {
         setLoading(false);
+        setRole('user');
+        setPermissions(DEFAULT_PERMISSIONS.user);
+        setIsApproved(false);
+        setLicenseStatus('none');
+        setGymInfo(null);
       }
     });
 
+    return () => unsubscribeAuth();
+  }, []);
+
+  // 2. Fetch User Profile and Role (Master or Tenant)
+  useEffect(() => {
+    if (!user) return;
+
+    let unsubUserDoc: (() => void) | null = null;
+    
+    // We wait for gymInfo to be resolved (either found by slug or missing) 
+    // before determining where to look for the user profile.
+    // If gymLoading is true, we wait.
+    if (licenseLoading) return;
+
+    const setupUserProfile = async () => {
+      try {
+        const isSuperAdmin = user.email === "rodrigues.ueslei@gmail.com";
+        const targetDb = (gymInfo?.config && !isSuperAdmin) ? tenantDb : masterDb;
+        const userDocRef = doc(targetDb, 'users', user.uid);
+        
+        const userDoc = await getDoc(userDocRef);
+        let currentRole: string = 'user';
+        let currentApproved: boolean = false;
+
+        if (!userDoc.exists()) {
+          currentRole = isSuperAdmin ? 'admin' : 'user';
+          currentApproved = isSuperAdmin;
+          
+          await setDoc(userDocRef, {
+            name: user.displayName,
+            email: user.email,
+            photoURL: user.photoURL,
+            role: currentRole,
+            approved: currentApproved,
+            createdAt: serverTimestamp()
+          });
+        } else {
+          const data = userDoc.data();
+          currentRole = data?.role || 'user';
+          currentApproved = data?.approved || false;
+
+          if (isSuperAdmin && (currentRole !== 'admin' || !currentApproved)) {
+            currentRole = 'admin';
+            currentApproved = true;
+            await setDoc(userDocRef, { role: 'admin', approved: true }, { merge: true });
+          }
+        }
+
+        setRole(currentRole as UserRole);
+        setIsApproved(currentApproved);
+
+        // Listen for profile changes
+        unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            const newRole = data.role || 'user';
+            const newApproved = data.approved || false;
+            setIsApproved(newApproved);
+            setRole(newRole as UserRole);
+          }
+        });
+
+      } catch (error) {
+        console.error("Error setting up user profile:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    setupUserProfile();
+
     return () => {
-      unsubscribeAuth();
       if (unsubUserDoc) unsubUserDoc();
     };
-  }, [gymInfo?.config, tenantDb]); // Re-run when tenant config is ready
+  }, [user, gymInfo?.config, tenantDb, licenseLoading]);
 
   const isSuperAdmin = user?.email === "rodrigues.ueslei@gmail.com";
   const isLicenseOwner = licenseStatus === 'active';

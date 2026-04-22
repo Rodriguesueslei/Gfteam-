@@ -13,7 +13,10 @@ import {
   Layout as LayoutIcon,
   FileJson,
   Package,
-  CreditCard
+  CreditCard,
+  User as UserIcon,
+  ShieldCheck,
+  Link
 } from 'lucide-react';
 import { collection, doc, addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -75,7 +78,7 @@ export const SettingsView = ({ belts, settings, secrets, allData, backups = [] }
     clientSecret: secrets?.gympassClientSecret || ''
   });
 
-  const { isAdmin } = useAuth();
+  const { isAdmin, user, linkGoogle, unlinkGoogle } = useAuth();
 
   useEffect(() => {
     if (settings || secrets) {
@@ -278,7 +281,8 @@ export const SettingsView = ({ belts, settings, secrets, allData, backups = [] }
           { id: 'logo', label: 'Identidade', icon: Palette },
           { id: 'payments', label: 'Pagamentos', icon: CreditCard },
           { id: 'integrations', label: 'Integrações', icon: Package },
-          { id: 'data', label: 'Dados & Backup', icon: Database }
+          { id: 'data', label: 'Dados & Backup', icon: Database },
+          { id: 'account', label: 'Minha Conta', icon: UserIcon }
         ].map(tab => (
           <button 
             key={tab.id}
@@ -707,6 +711,88 @@ export const SettingsView = ({ belts, settings, secrets, allData, backups = [] }
                     )}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {activeSubTab === 'account' && (
+        <div className="max-w-2xl space-y-6">
+          <div className="p-8 bg-white border border-gray-100 rounded-[32px] shadow-sm space-y-8">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-blue-100 rounded-2xl">
+                <UserIcon className="w-6 h-6 text-blue-600" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Segurança da Conta</h2>
+                <p className="text-sm text-gray-500">Gerencie seu acesso e vínculos externos.</p>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="p-6 bg-gray-50 rounded-3xl space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-gray-400">E-mail de Login</p>
+                    <p className="font-bold text-gray-900">{user?.email}</p>
+                  </div>
+                  <div className="px-3 py-1 bg-gray-200 text-gray-600 text-[8px] font-black uppercase rounded-lg tracking-widest">
+                    Padrão
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 border border-gray-100 rounded-3xl space-y-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex gap-4">
+                    <div className="p-3 bg-gray-100 rounded-2xl">
+                      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-5 h-5" alt="Google" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-gray-900">Google Authentication</h3>
+                      <p className="text-xs text-gray-500 max-w-xs">Permite que você acesse o sistema sem precisar digitar sua senha.</p>
+                    </div>
+                  </div>
+                  
+                  {user?.providerData.some(p => p.providerId === 'google.com') ? (
+                    <div className="flex flex-col items-end gap-2">
+                      <span className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 text-[10px] font-black uppercase rounded-full tracking-widest">
+                        <ShieldCheck className="w-3 h-3" />
+                        Vinculado
+                      </span>
+                      <button 
+                        onClick={async () => {
+                          if (window.confirm("Deseja realmente desvincular sua conta Google?")) {
+                            try {
+                              await unlinkGoogle();
+                              toast.success("Conta Google desvinculada!");
+                            } catch (error) {
+                              toast.error("Erro ao desvincular conta.");
+                            }
+                          }
+                        }}
+                        className="text-[10px] font-bold text-rose-500 hover:underline"
+                      >
+                        Desvincular
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={async () => {
+                        try {
+                          await linkGoogle();
+                          toast.success("Conta Google vinculada com sucesso!");
+                        } catch (error) {
+                          toast.error("Erro ao vincular conta. Tente novamente.");
+                        }
+                      }}
+                      className="flex items-center gap-2 px-6 py-3 bg-black text-white font-black text-xs rounded-2xl hover:bg-gray-800 transition-all uppercase italic tracking-tighter"
+                    >
+                      <Link className="w-4 h-4" />
+                      Vincular Agora
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>

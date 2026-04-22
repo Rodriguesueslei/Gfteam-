@@ -1,5 +1,16 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, Auth } from 'firebase/auth';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signOut, 
+  Auth, 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  linkWithPopup,
+  unlink,
+  EmailAuthProvider
+} from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -9,9 +20,6 @@ const initializeMaster = () => {
   
   if (!firebaseConfig || !firebaseConfig.apiKey) {
     console.error("Master Firebase config is missing apiKey. Check firebase-applet-config.json");
-    // Return a dummy app or handle in context? 
-    // Actually, if we return null, everything else crashes.
-    // Let's create a minimal config check.
     return null;
   }
   
@@ -38,16 +46,14 @@ export const db = (masterApp && firebaseConfig.firestoreDatabaseId)
 export const googleProvider = new GoogleAuthProvider();
 
 export const signInWithGoogle = () => signInWithPopup(auth, googleProvider);
+export const loginWithEmail = (email: string, pass: string) => signInWithEmailAndPassword(auth, email, pass);
 export const logout = () => signOut(auth);
 
 // Helper to create a tenant instance
 export const createTenantInstance = (config: any) => {
   // Robust check: if no apiKey, return the master instance to avoid crash
   if (!config || !config.apiKey || !config.projectId) {
-    return {
-      auth: auth,
-      db: db
-    };
+    return { auth, db };
   }
 
   const appName = `tenant-${config.projectId}`;
@@ -66,10 +72,6 @@ export const createTenantInstance = (config: any) => {
     };
   } catch (err) {
     console.error("Failed to initialize tenant app:", err);
-    // Fallback to master to keep app running
-    return {
-      auth: auth,
-      db: db
-    };
+    return { auth, db };
   }
 };

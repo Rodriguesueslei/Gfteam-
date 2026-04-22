@@ -20,6 +20,9 @@ import {
   Info
 } from 'lucide-react';
 import { format } from 'date-fns';
+import { initializeApp, getApps } from 'firebase/app';
+import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import firebaseConfig from '../../../firebase-applet-config.json';
 import { collection, doc, setDoc, updateDoc, deleteDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { formatCurrency, cn } from '../../utils/formatters';
@@ -36,7 +39,9 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
   
   const [formData, setFormData] = useState({
     academyName: '',
+    ownerName: '',
     ownerEmail: '',
+    ownerPassword: '',
     plan: 'enterprise',
     expiresAt: format(new Date(new Date().setFullYear(new Date().getFullYear() + 1)), 'yyyy-MM-dd')
   });
@@ -66,8 +71,29 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
 
   const handleCreateLicense = async (e: React.FormEvent) => {
     e.preventDefault();
+    const loadingToast = toast.loading("Criando academia e conta de administrador...");
     try {
-      const licenseId = formData.ownerEmail.toLowerCase().trim();
+      const email = formData.ownerEmail.toLowerCase().trim();
+      
+      // 1. Create User in Firebase Auth using a skeleton app to avoid logging out SuperAdmin
+      const tempAppName = `temp-reg-${Date.now()}`;
+      const tempApp = initializeApp(firebaseConfig, tempAppName);
+      const tempAuth = getAuth(tempApp);
+
+      try {
+        await createUserWithEmailAndPassword(tempAuth, email, formData.ownerPassword);
+        // We log them out of the temp app immediately so it doesn't persist
+        await signOut(tempAuth);
+      } catch (authErr: any) {
+        if (authErr.code !== 'auth/email-already-in-use') {
+          console.error("Auth creation error:", authErr);
+          toast.error("Erro ao criar conta de acesso: " + authErr.message, { id: loadingToast });
+          return;
+        }
+        // If email already exists, we just proceed to create the license document
+      }
+
+      const licenseId = email;
       const slug = formData.academyName
         .toLowerCase()
         .normalize('NFD')
@@ -78,7 +104,8 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
 
       const data: any = {
         academyName: formData.academyName,
-        ownerEmail: formData.ownerEmail.toLowerCase().trim(),
+        ownerName: formData.ownerName,
+        ownerEmail: email,
         slug: slug,
         plan: formData.plan,
         status: 'active',
@@ -87,16 +114,32 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
       };
 
       await setDoc(doc(db, 'licenses', licenseId), data);
-      toast.success("Academia cadastrada! O dono agora pode configurar o Firebase no primeiro login.");
+      
+      // Optional: Create initial user record in master DB as admin
+      // This helps with initial role mapping
+      await setDoc(doc(db, 'users', licenseId), { // Using email as ID or we get the UID?
+        // Actually best to let them log in first to get their real UID, 
+        // but we can pre-approve the email in the license.
+        name: formData.ownerName,
+        email: email,
+        role: 'admin',
+        approved: true,
+        createdAt: serverTimestamp()
+      }, { merge: true });
+
+      toast.success("Academia cadastrada com sucesso!", { id: loadingToast });
       setIsModalOpen(false);
       setFormData({
         academyName: '',
+        ownerName: '',
         ownerEmail: '',
+        ownerPassword: '',
         plan: 'enterprise',
         expiresAt: format(new Date(new Date().setFullYear(new Date().getFullYear() + 1)), 'yyyy-MM-dd')
       });
     } catch (err) {
-      toast.error("Erro ao cadastrar academia.");
+      console.error("Create license error:", err);
+      toast.error("Erro ao cadastrar academia.", { id: loadingToast });
     }
   };
 
@@ -418,14 +461,37 @@ service cloud.firestore {
                 />
               </div>
 
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Nome do Responsável</label>
+                  <input 
+                    required type="text"
+                    className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all font-bold text-sm"
+                    value={formData.ownerName}
+                    onChange={e => setFormData({ ...formData, ownerName: e.target.value })}
+                    placeholder="Nome completo"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">E-mail (Login)</label>
+                  <input 
+                    required type="email"
+                    className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all font-bold text-sm"
+                    value={formData.ownerEmail}
+                    onChange={e => setFormData({ ...formData, ownerEmail: e.target.value })}
+                    placeholder="email@escola.com"
+                  />
+                </div>
+              </div>
+
               <div className="space-y-2">
-                <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">E-mail do Responsável (Google Auth)</label>
+                <label className="text-xs font-black uppercase tracking-widest text-gray-400 ml-2">Senha de Acesso</label>
                 <input 
-                  required type="email"
-                  className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all font-bold"
-                  value={formData.ownerEmail}
-                  onChange={e => setFormData({ ...formData, ownerEmail: e.target.value })}
-                  placeholder="email@gmail.com"
+                  required type="text" // Using text so SuperAdmin can see what they set
+                  className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-gray-200 outline-none transition-all font-mono text-sm"
+                  value={formData.ownerPassword}
+                  onChange={e => setFormData({ ...formData, ownerPassword: e.target.value })}
+                  placeholder="Senha inicial"
                 />
               </div>
 

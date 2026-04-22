@@ -76,9 +76,13 @@ const AppContent = () => {
     isCheckInTablet, 
     licenseStatus,
     gymInfo,
-    syncGymStats
+    syncGymStats,
+    loginWithEmail
   } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [viewMode, setViewMode] = useState<'professional' | 'student'>('professional');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -206,26 +210,75 @@ const AppContent = () => {
             </div>
           </div>
 
-          <div className="p-1 bg-white rounded-[32px] shadow-2xl shadow-black/5 border border-gray-100">
+          <form 
+            onSubmit={async (e) => {
+              e.preventDefault();
+              setIsLoggingIn(true);
+              try {
+                await loginWithEmail(email, password);
+              } catch (error: any) {
+                console.error("Login error:", error);
+                toast.error("Erro ao fazer login: Verifique seu e-mail e senha.");
+              } finally {
+                setIsLoggingIn(false);
+              }
+            }}
+            className="p-8 bg-white rounded-[32px] shadow-2xl shadow-black/5 border border-gray-100 text-left space-y-4"
+          >
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">E-mail</label>
+              <input 
+                required
+                type="email"
+                placeholder="seu@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-black outline-none transition-all font-bold"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Senha</label>
+              <input 
+                required
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-black outline-none transition-all font-bold"
+              />
+            </div>
+            
             <button 
+              type="submit"
+              disabled={isLoggingIn}
+              className="w-full flex items-center justify-center gap-4 px-8 py-5 bg-black text-white font-black text-lg rounded-[28px] hover:bg-gray-900 transition-all active:scale-[0.98] shadow-xl shadow-black/10 uppercase italic tracking-tighter disabled:opacity-50"
+            >
+              {isLoggingIn ? "Autenticando..." : "Acessar Sistema"}
+            </button>
+
+            <div className="relative py-4">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-100"></div></div>
+              <div className="relative flex justify-center text-[10px] uppercase font-black tracking-widest text-gray-300">
+                <span className="bg-white px-4 italic">Ou continue com</span>
+              </div>
+            </div>
+
+            <button 
+              type="button"
               onClick={async () => {
                 try {
                   await signInWithGoogle();
                 } catch (error: any) {
-                  console.error("Login component error:", error);
-                  if (error.code === 'auth/unauthorized-domain') {
-                    toast.error("Este domínio não está autorizado no Firebase. Adicione o link do Netlify nos 'Domínios Autorizados' no Console do Firebase.");
-                  } else {
-                    toast.error("Erro ao fazer login: " + (error.message || "Tente novamente."));
-                  }
+                  console.error("Social login error:", error);
+                  toast.error("Erro ao entrar com Google.");
                 }
               }}
-              className="w-full flex items-center justify-center gap-4 px-8 py-5 bg-black text-white font-bold text-lg rounded-[28px] hover:bg-gray-900 transition-all active:scale-[0.98] shadow-xl"
+              className="w-full flex items-center justify-center gap-3 px-8 py-4 bg-gray-50 text-gray-600 font-bold text-sm rounded-2xl hover:bg-gray-100 transition-all active:scale-[0.98]"
             >
-              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-6 h-6 brightness-0 invert" alt="" />
-              Acessar Sistema
+              <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-4 h-4" alt="" />
+              Google Authentication
             </button>
-          </div>
+          </form>
 
           <p className="text-gray-400 text-xs font-medium">
             © {new Date().getFullYear()} GFTeam Limeira. Todos os direitos reservados.

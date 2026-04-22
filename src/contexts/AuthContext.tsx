@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
-import { onAuthStateChanged, User, Auth } from 'firebase/auth';
-import { auth as masterAuth, db as masterDb, createTenantInstance, logout as firebaseLogout } from '../firebase';
+import { onAuthStateChanged, User, Auth, GoogleAuthProvider, linkWithPopup, unlink, EmailAuthProvider } from 'firebase/auth';
+import { auth as masterAuth, db as masterDb, createTenantInstance, logout as firebaseLogout, loginWithEmail as firebaseLoginWithEmail, googleProvider } from '../firebase';
 import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, collection, query, where, Firestore } from 'firebase/firestore';
 
 export type UserRole = 'admin' | 'receptionist' | 'professor' | 'user' | 'checkin_tablet' | string;
@@ -57,6 +57,9 @@ interface AuthContextType {
   tenantDb: Firestore;
   masterDb: Firestore;
   logout: () => Promise<void>;
+  loginWithEmail: (email: string, pass: string) => Promise<void>;
+  linkGoogle: () => Promise<void>;
+  unlinkGoogle: () => Promise<void>;
   updateTenantConfig: (config: any) => Promise<void>;
   syncGymStats: (stats: { studentCount: number }) => Promise<void>;
 }
@@ -77,6 +80,9 @@ const AuthContext = createContext<AuthContextType>({
   tenantDb: masterDb,
   masterDb: masterDb,
   logout: async () => {},
+  loginWithEmail: async () => {},
+  linkGoogle: async () => {},
+  unlinkGoogle: async () => {},
   updateTenantConfig: async () => {},
   syncGymStats: async () => {}
 });
@@ -348,6 +354,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const loginWithEmail = async (email: string, pass: string) => {
+    setLoading(true);
+    try {
+      await firebaseLoginWithEmail(email, pass);
+    } catch (error) {
+      setLoading(false);
+      throw error;
+    }
+  };
+
+  const linkGoogle = async () => {
+    if (!user) return;
+    try {
+      await linkWithPopup(user, googleProvider);
+      // Force user update in state
+      setUser({ ...masterAuth.currentUser! });
+    } catch (error) {
+      console.error("Link Google error:", error);
+      throw error;
+    }
+  };
+
+  const unlinkGoogle = async () => {
+    if (!user) return;
+    try {
+      await unlink(user, GoogleAuthProvider.PROVIDER_ID);
+      setUser({ ...masterAuth.currentUser! });
+    } catch (error) {
+      console.error("Unlink Google error:", error);
+      throw error;
+    }
+  };
+
   const updateTenantConfig = async (configData: any) => {
     if (!user?.email) return;
     const licenseId = user.email.toLowerCase().trim();
@@ -399,6 +438,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       tenantDb,
       masterDb,
       logout,
+      loginWithEmail,
+      linkGoogle,
+      unlinkGoogle,
       updateTenantConfig,
       syncGymStats
     }}>

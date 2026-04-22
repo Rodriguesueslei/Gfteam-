@@ -17,7 +17,7 @@ import {
   Moon,
   FileText
 } from 'lucide-react';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth, AuthProvider } from './contexts/AuthContext';
 import { signInWithGoogle, logout } from './firebase';
@@ -75,7 +75,8 @@ const AppContent = () => {
     isReceptionist, 
     isCheckInTablet, 
     licenseStatus,
-    gymInfo 
+    gymInfo,
+    syncGymStats
   } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [viewMode, setViewMode] = useState<'professional' | 'student'>('professional');
@@ -146,6 +147,22 @@ const AppContent = () => {
   }, [user, students]);
 
   const isLoading = authLoading || (!!user && !dataLoaded);
+
+  // Sync basic stats to Master DB (for SuperAdmin health check)
+  useEffect(() => {
+    if (user && gymInfo && !isSuperAdmin && students && students.length >= 0) {
+      syncGymStats({ studentCount: students.length });
+    }
+  }, [students.length, user, gymInfo, isSuperAdmin, syncGymStats]);
+
+  // Inject Branding CSS Variables
+  useEffect(() => {
+    if (gymInfo?.config?.branding?.primaryColor) {
+      document.documentElement.style.setProperty('--primary-brand', gymInfo.config.branding.primaryColor);
+    } else {
+      document.documentElement.style.setProperty('--primary-brand', '#000000');
+    }
+  }, [gymInfo]);
 
   if (authLoading) return <LoadingOverlay isLoading={true} message="Autenticando..." />;
 

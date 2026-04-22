@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { Database, ShieldCheck, Rocket, ChevronRight, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Database, ShieldCheck, Rocket, ChevronRight, AlertCircle, CheckCircle2, Palette, Terminal, Copy, ExternalLink, Info, Sparkles, Wand2, Send, Bot } from 'lucide-react';
 import { cn } from '../../utils/formatters';
+import toast from 'react-hot-toast';
+import { GoogleGenAI, Type } from "@google/genai";
 
 export const SetupWizard = () => {
   const { user, updateTenantConfig } = useAuth();
   const [step, setStep] = useState(1);
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiInput, setAiInput] = useState('');
   const [config, setConfig] = useState({
     apiKey: '',
     authDomain: '',
@@ -14,16 +19,87 @@ export const SetupWizard = () => {
     messagingSenderId: '',
     appId: ''
   });
+  const [branding, setBranding] = useState({
+    primaryColor: '#10b981',
+    logoUrl: ''
+  });
   const [loading, setLoading] = useState(false);
+
+  const ai = new GoogleGenAI({ apiKey: (process.env as any).GEMINI_API_KEY });
+
+  const handleAIAssist = async () => {
+    if (!aiInput.trim()) return;
+    setAiLoading(true);
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Extraia as configurações do Firebase (apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId) deste código/texto e retorne apenas o JSON puro, sem markdown ou explicações. Se não encontrar, retorne um erro amigável em JSON com a chave "error". Texto: ${aiInput}`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              apiKey: { type: Type.STRING },
+              authDomain: { type: Type.STRING },
+              projectId: { type: Type.STRING },
+              storageBucket: { type: Type.STRING },
+              messagingSenderId: { type: Type.STRING },
+              appId: { type: Type.STRING },
+              error: { type: Type.STRING }
+            }
+          }
+        }
+      });
+
+      const result = JSON.parse(response.text || '{}');
+      if (result.error) {
+        toast.error(result.error);
+      } else {
+        setConfig({
+          apiKey: result.apiKey || '',
+          authDomain: result.authDomain || '',
+          projectId: result.projectId || '',
+          storageBucket: result.storageBucket || '',
+          messagingSenderId: result.messagingSenderId || '',
+          appId: result.appId || ''
+        });
+        toast.success("Dados extraídos com sucesso pela IA!");
+        setShowAIAssistant(false);
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Erro ao processar com IA. Tente colar os campos manualmente.");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const securityRules = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}`;
+
+  const copyRules = () => {
+    navigator.clipboard.writeText(securityRules);
+    toast.success("Regras copiadas! Cole no console do Firebase.");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await updateTenantConfig(config);
-      setStep(3);
+      await updateTenantConfig({
+        ...config,
+        branding // Store branding alongside config
+      });
+      setStep(4);
     } catch (err) {
       console.error(err);
+      toast.error("Erro ao salvar configurações.");
     } finally {
       setLoading(false);
     }
@@ -40,8 +116,9 @@ export const SetupWizard = () => {
             </div>
             <div className="space-y-6">
               <StepIndicator num={1} title="Boas-vindas" active={step === 1} done={step > 1} />
-              <StepIndicator num={2} title="Configuração" active={step === 2} done={step > 2} />
-              <StepIndicator num={3} title="Concluído" active={step === 3} done={step > 3} />
+              <StepIndicator num={2} title="Branding" active={step === 2} done={step > 2} />
+              <StepIndicator num={3} title="Configuração" active={step === 3} done={step > 3} />
+              <StepIndicator num={4} title="Concluído" active={step === 4} done={step > 4} />
             </div>
           </div>
           <div className="text-[10px] uppercase font-black tracking-widest text-white/40">
@@ -73,8 +150,140 @@ export const SetupWizard = () => {
 
           {step === 2 && (
             <div className="animate-in fade-in slide-in-from-right-4 duration-500">
-              <h2 className="text-3xl font-black text-black italic uppercase tracking-tighter mb-4">Configurar Firebase</h2>
-              <p className="text-gray-400 text-sm mb-8">Cole abaixo as credenciais do seu projeto Firebase Console.</p>
+              <h2 className="text-3xl font-black text-black italic uppercase tracking-tighter mb-4">Sua Marca</h2>
+              <p className="text-gray-500 font-medium mb-8 leading-relaxed">
+                Personalize o sistema com as cores e o logo da sua academia.
+              </p>
+              
+              <div className="space-y-6 mb-10">
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 flex items-center gap-2">
+                    <Palette className="w-3 h-3" /> Cor Principal
+                  </label>
+                  <div className="flex items-center gap-4">
+                    <input 
+                      type="color" 
+                      className="w-12 h-12 rounded-xl border-none outline-none cursor-pointer"
+                      value={branding.primaryColor}
+                      onChange={e => setBranding({ ...branding, primaryColor: e.target.value })}
+                    />
+                    <span className="font-mono text-sm font-bold text-gray-400">{branding.primaryColor}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 flex items-center gap-2">
+                    URL do Logo (Opcional)
+                  </label>
+                  <input 
+                    type="url"
+                    placeholder="https://sua-academia.com/logo.png"
+                    className="w-full px-6 py-4 bg-gray-50 border-none rounded-2xl focus:ring-2 focus:ring-black/5 outline-none transition-all font-bold placeholder:text-gray-300"
+                    value={branding.logoUrl}
+                    onChange={e => setBranding({ ...branding, logoUrl: e.target.value })}
+                  />
+                  <p className="text-[10px] text-gray-400">Recomendado: PNG transparente, 512x512px.</p>
+                </div>
+              </div>
+
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setStep(1)}
+                  className="flex-1 py-4 text-gray-400 font-bold hover:text-black transition-all uppercase tracking-tighter italic"
+                >
+                  Voltar
+                </button>
+                <button 
+                  onClick={() => setStep(3)}
+                  className="flex-1 py-4 bg-black text-white font-black rounded-2xl flex items-center justify-center gap-2 hover:bg-gray-800 transition-all uppercase italic tracking-tighter shadow-xl shadow-black/10"
+                >
+                  Próximo Passo
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === 3 && (
+            <div className="animate-in fade-in slide-in-from-right-4 duration-500 overflow-y-auto max-h-[60vh] pr-4 custom-scrollbar">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-3xl font-black text-black italic uppercase tracking-tighter">Configurar Firebase</h2>
+                <button 
+                  onClick={() => setShowAIAssistant(!showAIAssistant)}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl text-[10px] font-black uppercase shadow-lg shadow-indigo-500/20 hover:scale-105 transition-all"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  {showAIAssistant ? "Manual" : "Assistente IA"}
+                </button>
+              </div>
+
+              {showAIAssistant ? (
+                <div className="mb-8 p-6 bg-indigo-50/50 rounded-3xl border border-indigo-100 animate-in zoom-in duration-300">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="p-2 bg-indigo-600 rounded-lg shadow-lg shadow-indigo-200">
+                      <Bot className="w-4 h-4 text-white" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black text-indigo-900 uppercase italic tracking-tight">Magia com Gemini</h4>
+                      <p className="text-[10px] text-indigo-600 font-bold uppercase tracking-widest">Cole o bloco de código do Firebase aqui</p>
+                    </div>
+                  </div>
+                  <textarea 
+                    className="w-full h-32 p-4 bg-white border-2 border-indigo-100 rounded-2xl outline-none focus:border-indigo-400 transition-all font-mono text-[10px] leading-relaxed mb-4 resize-none"
+                    placeholder={`Ex: const firebaseConfig = {
+  apiKey: "AIzaSyB...",
+  ...
+};`}
+                    value={aiInput}
+                    onChange={e => setAiInput(e.target.value)}
+                  />
+                  <button 
+                    onClick={handleAIAssist}
+                    disabled={aiLoading}
+                    className="w-full py-4 bg-indigo-600 text-white font-black rounded-xl hover:bg-indigo-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2 uppercase italic tracking-tighter"
+                  >
+                    {aiLoading ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Wand2 className="w-4 h-4" />
+                        Autocompletar Campos
+                      </>
+                    )}
+                  </button>
+                  <p className="text-[10px] text-gray-400 mt-4 text-center">
+                    Corte e cole todo o bloco <code className="bg-gray-100 px-1 rounded">firebaseConfig</code> que você vê no console.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-8 p-4 bg-amber-50 rounded-2xl border border-amber-100 space-y-4">
+                    <div className="flex items-start gap-3">
+                      <Terminal className="w-5 h-5 text-amber-600 mt-0.5" />
+                      <div>
+                        <h4 className="text-xs font-black text-amber-900 uppercase italic">Passos Obrigatórios:</h4>
+                        <ol className="text-[11px] text-amber-700 font-medium list-decimal ml-4 mt-2 space-y-1">
+                          <li>No Firebase Console, ative o <b>Google Auth</b>.</li>
+                          <li>Adicione seu domínio (Netlify) em <b>Domínios Autorizados</b>.</li>
+                          <li>Ative o <b>Cloud Firestore</b> (Modo Produção).</li>
+                        </ol>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-amber-200/50">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-black text-amber-900 uppercase">Regras de Segurança</span>
+                        <button 
+                          onClick={copyRules}
+                          className="flex items-center gap-1.5 px-2 py-1 bg-amber-600 text-white rounded-lg text-[9px] font-black uppercase hover:bg-amber-700 transition-all"
+                        >
+                          <Copy className="w-3 h-3" /> Copiar Regras
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
               
               <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
                 {Object.keys(config).map((key) => (
@@ -90,20 +299,27 @@ export const SetupWizard = () => {
                   </div>
                 ))}
                 
-                <div className="col-span-2 pt-6">
+                <div className="col-span-2 pt-6 flex gap-4">
+                  <button 
+                    type="button"
+                    onClick={() => setStep(2)}
+                    className="flex-1 py-4 text-gray-400 font-bold hover:text-black transition-all uppercase tracking-tighter italic"
+                  >
+                    Voltar
+                  </button>
                   <button 
                     type="submit"
                     disabled={loading}
-                    className="w-full py-5 bg-black text-white font-black text-lg rounded-2xl hover:bg-gray-800 transition-all shadow-xl uppercase italic tracking-tighter disabled:opacity-50"
+                    className="flex-[2] py-4 bg-black text-white font-black rounded-2xl hover:bg-gray-800 transition-all shadow-xl uppercase italic tracking-tighter disabled:opacity-50"
                   >
-                    {loading ? 'Salvando...' : 'Finalizar Configuração'}
+                    {loading ? 'Salvando...' : 'Finalizar Setup'}
                   </button>
                 </div>
               </form>
             </div>
           )}
 
-          {step === 3 && (
+          {step === 4 && (
             <div className="text-center animate-in fade-in zoom-in duration-500">
               <div className="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-6">
                 <CheckCircle2 className="w-10 h-10 text-emerald-500" />

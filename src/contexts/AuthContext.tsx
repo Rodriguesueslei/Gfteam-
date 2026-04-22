@@ -58,6 +58,7 @@ interface AuthContextType {
   masterDb: Firestore;
   logout: () => Promise<void>;
   updateTenantConfig: (config: any) => Promise<void>;
+  syncGymStats: (stats: { studentCount: number }) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({ 
@@ -76,7 +77,8 @@ const AuthContext = createContext<AuthContextType>({
   tenantDb: masterDb,
   masterDb: masterDb,
   logout: async () => {},
-  updateTenantConfig: async () => {}
+  updateTenantConfig: async () => {},
+  syncGymStats: async () => {}
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -269,13 +271,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const updateTenantConfig = async (config: any) => {
+  const updateTenantConfig = async (configData: any) => {
     if (!user?.email) return;
     const licenseId = user.email.toLowerCase().trim();
-    await setDoc(doc(masterDb, 'licenses', licenseId), {
-      externalFirebaseConfig: config,
-      status: 'active' // Ensure it stays active
-    }, { merge: true });
+    // Destructure branding if provided, otherwise keep it null to not overwrite
+    const { branding, ...firebaseConfig } = configData;
+    
+    const updatePayload: any = {
+      externalFirebaseConfig: firebaseConfig,
+      status: 'active',
+      updatedAt: serverTimestamp()
+    };
+
+    if (branding) {
+      updatePayload.branding = branding;
+    }
+
+    await setDoc(doc(masterDb, 'licenses', licenseId), updatePayload, { merge: true });
+  };
+
+  const syncGymStats = async (stats: { studentCount: number }) => {
+    if (!user?.email || isSuperAdmin) return;
+    const licenseId = user.email.toLowerCase().trim();
+    try {
+      await setDoc(doc(masterDb, 'licenses', licenseId), {
+        stats: {
+          ...stats,
+          lastSync: serverTimestamp()
+        }
+      }, { merge: true });
+    } catch (e) {
+      console.error("Master sync error:", e);
+    }
   };
 
   return (
@@ -295,7 +322,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       tenantDb,
       masterDb,
       logout,
-      updateTenantConfig
+      updateTenantConfig,
+      syncGymStats
     }}>
       {children}
     </AuthContext.Provider>

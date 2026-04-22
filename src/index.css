@@ -6,6 +6,7 @@
   --color-gft-green: #008C45;
   --color-gft-yellow: #FFCC29;
   --color-gft-blue: #0038A8;
+  --color-brand: var(--primary-brand, #000000);
   
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-serif: "Cormorant Garamond", serif;

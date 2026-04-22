@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { cn } from '../../utils/formatters';
+import { useAuth } from '../../contexts/AuthContext';
 
 const DEFAULT_LOGO = "https://firebasestorage.googleapis.com/v0/b/ossmanager-7f1e5.appspot.com/o/logos%2Fdefault_logo.png?alt=media";
 
@@ -11,11 +12,13 @@ interface LogoProps {
 }
 
 export const Logo = ({ className, settings, size = "md", customSrc }: LogoProps) => {
+  const { gymInfo } = useAuth();
   const [error, setError] = useState(false);
   const [fallback, setFallback] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   
-  const logoUrl = customSrc || settings?.logoUrl;
+  // Priority: customSrc > tenant branding > settings
+  const logoUrl = customSrc || gymInfo?.config?.branding?.logoUrl || settings?.logoUrl;
 
   useEffect(() => {
     setError(false);

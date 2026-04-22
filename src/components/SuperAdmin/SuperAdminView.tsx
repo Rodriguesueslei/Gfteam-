@@ -16,7 +16,8 @@ import {
   Lock,
   Unlock,
   ExternalLink,
-  Copy
+  Copy,
+  Info
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { collection, doc, setDoc, updateDoc, deleteDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
@@ -109,6 +110,22 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
     }
   };
 
+  const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+
+  const securityRules = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}`;
+
+  const copyRules = () => {
+    navigator.clipboard.writeText(securityRules);
+    toast.success("Regras copiadas!");
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
       <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
@@ -122,13 +139,22 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
           <h1 className="text-4xl font-black text-black italic uppercase tracking-tighter leading-none">Gestão de Licenças</h1>
           <p className="text-gray-500 font-medium">Controle de academias parceiras e assinaturas.</p>
         </div>
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center justify-center px-6 py-3 bg-black text-white font-bold rounded-2xl hover:bg-gray-800 transition-all shadow-xl shadow-black/10 italic uppercase tracking-tighter text-xs gap-2"
-        >
-          <Plus className="w-5 h-5" />
-          Nova Academia
-        </button>
+        <div className="flex gap-4">
+          <button 
+            onClick={() => setIsSupportModalOpen(true)}
+            className="flex items-center justify-center px-6 py-3 bg-gray-100 text-gray-600 font-bold rounded-2xl hover:bg-gray-200 transition-all italic uppercase tracking-tighter text-xs gap-2"
+          >
+            <Database className="w-4 h-4" />
+            Configurações Técnicas
+          </button>
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center justify-center px-6 py-3 bg-black text-white font-bold rounded-2xl hover:bg-gray-800 transition-all shadow-xl shadow-black/10 italic uppercase tracking-tighter text-xs gap-2"
+          >
+            <Plus className="w-5 h-5" />
+            Nova Academia
+          </button>
+        </div>
       </header>
 
       {/* Stats Summary */}
@@ -192,6 +218,7 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
             <thead>
               <tr className="bg-gray-50/50">
                 <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Academia / Dono</th>
+                <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Alunos</th>
                 <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Link de Acesso</th>
                 <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Plano</th>
                 <th className="px-8 py-4 text-[10px] font-black text-gray-400 uppercase tracking-widest">Expira em</th>
@@ -202,13 +229,18 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
             <tbody className="divide-y divide-gray-50">
               {filteredLicenses.map(license => {
                 const gymLink = `${window.location.origin}/?gym=${license.slug || license.id.split('@')[0]}`;
+                const studentCount = license.stats?.studentCount || 0;
                 
                 return (
                   <tr key={license.id} className="group hover:bg-gray-50/50 transition-all text-sm">
                     <td className="px-8 py-5">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-gray-400">
-                          <Building2 className="w-5 h-5" />
+                        <div className="w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-gray-400 overflow-hidden">
+                          {license.branding?.logoUrl ? (
+                            <img src={license.branding.logoUrl} className="w-full h-full object-cover" alt="" />
+                          ) : (
+                            <Building2 className="w-5 h-5" />
+                          )}
                         </div>
                         <div>
                           <p className="font-black text-gray-900 leading-none mb-1 uppercase italic tracking-tighter">{license.academyName}</p>
@@ -217,6 +249,12 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
                             <span className="text-[10px] font-bold">{license.ownerEmail}</span>
                           </div>
                         </div>
+                      </div>
+                    </td>
+                    <td className="px-8 py-5 text-center">
+                      <div className="inline-flex flex-col">
+                        <span className="text-lg font-black text-black leading-none">{studentCount}</span>
+                        <span className="text-[9px] font-black text-gray-400 uppercase tracking-tighter">Ativos</span>
                       </div>
                     </td>
                     <td className="px-8 py-5">
@@ -397,6 +435,84 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
                 className="w-full py-4 bg-gray-100 text-gray-600 font-bold rounded-2xl hover:bg-gray-200 transition-all uppercase tracking-tighter"
               >
                 Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Suporte Técnico / Configurações */}
+      {isSupportModalOpen && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+          <div onClick={() => setIsSupportModalOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative w-full max-w-2xl bg-white rounded-[40px] shadow-2xl p-10 animate-in fade-in zoom-in duration-300">
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-black rounded-2xl">
+                  <Database className="w-6 h-6 text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-black text-black italic uppercase tracking-tighter">Central Técnica</h2>
+                  <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">Recursos para suporte ao cliente</p>
+                </div>
+              </div>
+              <button onClick={() => setIsSupportModalOpen(false)} className="p-2 hover:bg-gray-50 rounded-full transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-8">
+              <section className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Regras do Firestore</h3>
+                  <button 
+                    onClick={copyRules}
+                    className="flex items-center gap-2 px-4 py-2 bg-black text-white rounded-xl text-[10px] font-black uppercase hover:bg-gray-800 transition-all active:scale-95"
+                  >
+                    <Copy className="w-3.5 h-3.5" /> Copiar Regras
+                  </button>
+                </div>
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                  <pre className="text-[10px] font-mono text-gray-500 leading-relaxed overflow-x-auto">
+                    {securityRules}
+                  </pre>
+                </div>
+                <div className="p-4 bg-blue-50 border border-blue-100 rounded-2xl flex gap-4">
+                  <Info className="w-5 h-5 text-blue-500 flex-shrink-0" />
+                  <p className="text-[10px] text-blue-700 font-medium leading-relaxed">
+                    Instrua seu cliente a colar estas regras na aba <b>Rules</b> do Firestore Console dele. Isso garante que apenas usuários autenticados possam ler/escrever dados.
+                  </p>
+                </div>
+              </section>
+
+              <section className="space-y-4">
+                <h3 className="text-sm font-black text-gray-900 uppercase tracking-widest">Domínios Autorizados</h3>
+                <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-center justify-between">
+                  <code className="text-[11px] font-mono font-bold text-gray-600">
+                    {window.location.hostname}
+                  </code>
+                  <button 
+                    onClick={() => {
+                      navigator.clipboard.writeText(window.location.hostname);
+                      toast.success("Domínio copiado!");
+                    }}
+                    className="p-2 text-gray-400 hover:text-black hover:bg-white rounded-lg transition-all shadow-sm"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-400 font-medium">
+                  Este domínio deve ser adicionado em <b>Authentication {'>'} Settings {'>'} Authorized Domains</b> no projeto Firebase da academia cliente.
+                </p>
+              </section>
+            </div>
+
+            <div className="mt-10 pt-6 border-t border-gray-50">
+              <button 
+                onClick={() => setIsSupportModalOpen(false)}
+                className="w-full py-4 bg-gray-900 text-white font-black rounded-2xl hover:bg-black transition-all uppercase tracking-tighter italic shadow-xl"
+              >
+                Entendido
               </button>
             </div>
           </div>

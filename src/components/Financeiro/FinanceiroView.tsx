@@ -32,6 +32,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Timestamp, addDoc, collection, doc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { SubscriptionsView } from './SubscriptionsView';
+import { InvoicesView } from './InvoicesView';
 import { formatCurrency, cn } from '../../utils/formatters';
 import { handleFirestoreError, OperationType } from '../../utils/errorHandlers';
 import toast from 'react-hot-toast';
@@ -42,10 +44,23 @@ interface FinanceiroViewProps {
   plans: any[];
   expenses: any[];
   installments: any[];
+  subscriptions: any[];
+  invoices: any[];
   onNavigate: (tab: string) => void;
+  processPayment: (paymentData: any) => Promise<string>;
 }
 
-export const FinanceiroView = ({ payments, students, plans, expenses, installments, onNavigate }: FinanceiroViewProps) => {
+export const FinanceiroView = ({ 
+  payments, 
+  students, 
+  plans, 
+  expenses, 
+  installments, 
+  subscriptions,
+  invoices,
+  onNavigate, 
+  processPayment 
+}: FinanceiroViewProps) => {
   const [activeSubTab, setActiveSubTab] = useState('history');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -137,7 +152,7 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
         await updateDoc(doc(db, 'payments', editingPayment.id), data);
         toast.success("Pagamento atualizado!");
       } else {
-        await addDoc(collection(db, 'payments'), data);
+        await processPayment(data);
         
         const student = students.find((s: any) => s.id === formData.studentId);
         const plan = plans.find((p: any) => p.id === student?.planId);
@@ -386,7 +401,25 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
                 activeSubTab === 'history' ? "bg-black text-white" : "text-gray-400 hover:bg-gray-50"
               )}
             >
-              Pagamentos
+              Fluxo de Caixa
+            </button>
+            <button 
+              onClick={() => { setActiveSubTab('subscriptions'); setSearchTerm(''); }}
+              className={cn(
+                "px-6 py-2 rounded-xl font-bold text-sm transition-all",
+                activeSubTab === 'subscriptions' ? "bg-black text-white" : "text-gray-400 hover:bg-gray-50"
+              )}
+            >
+              Assinaturas
+            </button>
+            <button 
+              onClick={() => { setActiveSubTab('invoices'); setSearchTerm(''); }}
+              className={cn(
+                "px-6 py-2 rounded-xl font-bold text-sm transition-all",
+                activeSubTab === 'invoices' ? "bg-black text-white" : "text-gray-400 hover:bg-gray-50"
+              )}
+            >
+              Faturas
             </button>
             <button 
               onClick={() => { setActiveSubTab('expenses'); setSearchTerm(''); }}
@@ -439,8 +472,14 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
           </div>
         </div>
         
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
+        <div className="p-8">
+          {activeSubTab === 'subscriptions' ? (
+            <SubscriptionsView subscriptions={subscriptions} />
+          ) : activeSubTab === 'invoices' ? (
+            <InvoicesView invoices={invoices} />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
             <thead>
               <tr className="bg-gray-50/50">
                 {activeSubTab === 'installments' ? (
@@ -600,8 +639,16 @@ export const FinanceiroView = ({ payments, students, plans, expenses, installmen
               ))}
             </tbody>
           </table>
+          {activeSubTab === 'history' && filteredPayments.length === 0 && (
+            <div className="py-20 text-center text-slate-500">
+              <FileText className="mx-auto h-12 w-12 text-slate-200 mb-4" />
+              <p>Nenhum lançamento encontrado</p>
+            </div>
+          )}
         </div>
+      )}
       </div>
+    </div>
       {/* Modal de Pagamento */}
       <AnimatePresence>
         {isModalOpen && (

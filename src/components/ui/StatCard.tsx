@@ -14,26 +14,28 @@ interface StatCardProps {
 }
 
 export const StatCard = ({ title, value, icon: Icon, trend, color }: StatCardProps) => (
-  <div className="p-6 bg-white border border-gray-100 shadow-sm rounded-[32px] hover:shadow-2xl hover:shadow-black/5 hover:-translate-y-1 transition-all duration-300 group">
+  <div className="premium-card p-6 group">
     <div className="flex items-start justify-between">
-      <div className="space-y-1">
-        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-[0.2em]">{title}</p>
-        <h3 className="text-3xl font-serif font-bold text-black italic tracking-tighter">{value}</h3>
+      <div className="space-y-3">
+        <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider font-sans">{title}</p>
+        <div className="flex items-baseline gap-2">
+          <h3 className="text-3xl font-display font-medium text-zinc-900 dark:text-white tracking-tight">{value}</h3>
+        </div>
         {trend && (
-          <div className="flex items-center gap-1.5 pt-1">
+          <div className="flex items-center gap-2">
             <span className={cn(
-              "text-[10px] font-bold px-1.5 py-0.5 rounded-md",
-              trend.isPositive ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600'
+              "text-[10px] font-bold px-2 py-0.5 rounded-full",
+              trend.isPositive ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10' : 'bg-rose-50 text-rose-600 dark:bg-rose-500/10'
             )}>
-              {trend.isPositive ? '+' : '-'}{trend.value}%
+              {trend.isPositive ? '↑' : '↓'} {trend.value}%
             </span>
-            <span className="text-[9px] text-gray-400 font-medium uppercase tracking-wider">vs mês anterior</span>
+            <span className="text-[10px] text-zinc-400 font-medium">vs mês anterior</span>
           </div>
         )}
       </div>
       <div className={cn(
-        "p-3 rounded-2xl transition-all duration-500 group-hover:scale-110 group-hover:rotate-3",
-        color || 'bg-gray-50 text-gray-400'
+        "p-2.5 rounded-xl transition-all duration-500 group-hover:scale-110",
+        color || "bg-zinc-50 dark:bg-white/5 text-zinc-400"
       )}>
         <Icon className="w-5 h-5" />
       </div>

@@ -73,6 +73,58 @@
       },
       "required": ["title", "startTime", "endTime"]
     },
+    "subscription": {
+      "title": "Subscription",
+      "description": "A student's recurring series of payments for a plan",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "description": "ID of the student" },
+        "studentName": { "type": "string", "description": "Cache of the student's name" },
+        "planId": { "type": "string", "description": "ID of the subscribed plan" },
+        "planName": { "type": "string", "description": "Cache of the plan name" },
+        "status": { "type": "string", "enum": ["Active", "Past Due", "Canceled", "Unpaid", "Trialing"], "description": "Current status of the subscription" },
+        "amount": { "type": "number", "description": "Billing amount for the subscription" },
+        "currency": { "type": "string", "description": "Currency code (e.g., BRL, USD)" },
+        "billingCycle": { "type": "string", "enum": ["Monthly", "Quarterly", "Semiannual", "Yearly"], "description": "How often the subscription is billed" },
+        "currentPeriodStart": { "type": "string", "format": "date-time", "description": "Start of the current billing period" },
+        "currentPeriodEnd": { "type": "string", "format": "date-time", "description": "End of the current billing period (due date for next invoice)" },
+        "cancelAtPeriodEnd": { "type": "boolean", "description": "Whether to cancel at the end of the period" },
+        "externalId": { "type": "string", "description": "ID from Stripe/MercadoPago" },
+        "paymentMethodId": { "type": "string", "description": "Preferred payment method ID" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the subscription was created" }
+      },
+      "required": ["studentId", "planId", "status", "amount", "currentPeriodEnd"]
+    },
+    "invoice": {
+      "title": "Invoice",
+      "description": "A specific billing event within a subscription or a one-time charge",
+      "type": "object",
+      "properties": {
+        "studentId": { "type": "string", "description": "ID of the student" },
+        "studentName": { "type": "string", "description": "Cache of student name" },
+        "subscriptionId": { "type": "string", "description": "Optional ID of the related subscription" },
+        "amount": { "type": "number", "description": "Total amount due" },
+        "dueDate": { "type": "string", "format": "date-time", "description": "When the payment is due" },
+        "status": { "type": "string", "enum": ["Open", "Paid", "Void", "Uncollectible", "Draft"], "description": "Current status of the invoice" },
+        "paidAt": { "type": "string", "format": "date-time", "description": "When the invoice was paid" },
+        "items": { 
+          "type": "array", 
+          "items": {
+            "type": "object",
+            "properties": {
+              "description": { "type": "string" },
+              "amount": { "type": "number" }
+            }
+          },
+          "description": "Line items for the invoice"
+        },
+        "periodStart": { "type": "string", "format": "date-time", "description": "Period covered by this invoice" },
+        "periodEnd": { "type": "string", "format": "date-time" },
+        "externalId": { "type": "string", "description": "Stripe/MercadoPago Invoice ID" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["studentId", "amount", "dueDate", "status"]
+    },
     "payment": {
       "title": "Payment",
       "description": "A tuition payment record",
@@ -297,6 +349,14 @@
     "/graduations/{graduationId}": {
       "schema": "graduation",
       "description": "History of student belt and stripe promotions"
+    },
+    "/subscriptions/{subscriptionId}": {
+      "schema": "subscription",
+      "description": "Active and past student subscriptions"
+    },
+    "/invoices/{invoiceId}": {
+      "schema": "invoice",
+      "description": "Billing events and payment requests"
     },
     "/belts/{beltId}": {
       "schema": "belt",

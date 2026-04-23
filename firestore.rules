@@ -142,6 +142,21 @@ service cloud.firestore {
              (!('type' in data) || data.type in ['Technical', 'Behavioral', 'General']);
     }
 
+    function isValidSubscription(data) {
+      return data.studentId is string &&
+             data.planId is string &&
+             data.status in ['active', 'past_due', 'canceled', 'unpaid', 'trialing'] &&
+             data.amount is number &&
+             data.currentPeriodEnd is timestamp;
+    }
+
+    function isValidInvoice(data) {
+      return data.studentId is string &&
+             data.amount is number &&
+             data.dueDate is timestamp &&
+             data.status in ['paid', 'pending', 'overdue', 'voided'];
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -258,6 +273,20 @@ service cloud.firestore {
     match /evaluations/{evaluationId} {
       allow read: if isAuthenticated();
       allow create, update: if (isAdmin() || isProfessor()) && isValidEvaluation(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /subscriptions/{subscriptionId} {
+      allow read: if isAdmin() || isReceptionist() || 
+                    (isAuthenticated() && get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.email == request.auth.token.email);
+      allow create, update: if (isAdmin() || isReceptionist()) && isValidSubscription(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /invoices/{invoiceId} {
+      allow read: if isAdmin() || isReceptionist() || 
+                    (isAuthenticated() && get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.email == request.auth.token.email);
+      allow create, update: if (isAdmin() || isReceptionist()) && isValidInvoice(request.resource.data);
       allow delete: if isAdmin();
     }
 

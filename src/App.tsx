@@ -21,11 +21,14 @@ import { Toaster, toast } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth, AuthProvider } from './contexts/AuthContext';
 import { signInWithGoogle, logout } from './firebase';
+import { useStudents } from './application/hooks/useStudents';
+import { usePayments } from './application/hooks/usePayments';
+import { useCheckIn } from './application/hooks/useCheckIn';
+import { useSubscriptions } from './application/hooks/useSubscriptions';
+import { useInvoices } from './application/hooks/useInvoices';
 import { 
   useBelts, 
-  useStudents, 
   useClasses, 
-  usePayments, 
   useInstructors, 
   usePlans, 
   useProducts, 
@@ -33,7 +36,6 @@ import {
   useUsers, 
   useExpenses, 
   useSettings,
-  useCheckIns,
   useInstallments,
   useEvaluations,
   useGraduations,
@@ -80,6 +82,7 @@ const AppContent = () => {
     loginWithEmail,
     sendResetEmail
   } = useAuth();
+  
   const [activeTab, setActiveTab] = useState('dashboard');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -106,7 +109,8 @@ const AppContent = () => {
   
   // Data Hooks
   const belts = useBelts(!!user);
-  const students = useStudents(!!user, user?.email, isAdmin || permissions.students);
+  const { students: studentsData, loading: studentsLoading } = useStudents(!!user, isAdmin || permissions.students, user?.email);
+  const students = studentsData || [];
   const classes = useClasses(!!user);
   const instructors = useInstructors(!!user);
   const plans = usePlans(!!user);
@@ -136,11 +140,13 @@ const AppContent = () => {
     return students.some(s => s.email === user.email);
   }, [students, user?.email, role]);
 
-  const checkIns = useCheckIns(!!user, isAdmin || permissions.students, (isAdmin || permissions.students) ? undefined : myStudentIds);
+  const { checkIns, registerCheckIn } = useCheckIn(!!user, isAdmin || permissions.students, (isAdmin || permissions.students) ? undefined : myStudentIds);
   const installments = useInstallments(isAdmin || permissions.finance);
   const evaluations = useEvaluations(!!user, isAdmin || permissions.students, myStudentIds);
   const graduations = useGraduations(!!user, isAdmin || permissions.students, myStudentIds);
-  const payments = usePayments(!!user, isAdmin || permissions.finance, myStudentIds);
+  const { payments, processPayment, processMensalidade } = usePayments(!!user, isAdmin || permissions.finance, myStudentIds);
+  const { subscriptions } = useSubscriptions(isAdmin || permissions.finance);
+  const { invoices } = useInvoices(isAdmin || permissions.finance);
 
   const [dataLoaded, setDataLoaded] = useState(false);
 
@@ -341,12 +347,28 @@ const AppContent = () => {
             <br/><br/>
             Por favor, entre em contato com a recepção da academia para ativar seu perfil.
           </p>
-          <button 
-            onClick={logout} 
-            className="w-full py-4 bg-white/10 text-white font-bold rounded-2xl hover:bg-white/20 transition-all border border-white/10"
-          >
-            Sair da Conta
-          </button>
+          {isSuperAdmin && (
+            <div className="mb-4 p-4 bg-amber-500/10 border border-amber-500/20 rounded-2xl text-amber-500 text-xs font-bold uppercase tracking-wider">
+              Você é reconhecido como Super Admin, mas seu perfil ainda não foi sincronizado. 
+              Clique abaixo para forçar a entrada.
+            </div>
+          )}
+          <div className="flex flex-col gap-3">
+            {isSuperAdmin && (
+              <button 
+                onClick={() => window.location.reload()} 
+                className="w-full py-4 bg-amber-500 text-black font-bold rounded-2xl hover:bg-amber-600 transition-all uppercase tracking-tighter italic"
+              >
+                Sincronizar e Entrar
+              </button>
+            )}
+            <button 
+              onClick={logout} 
+              className="w-full py-4 bg-white/10 text-white font-bold rounded-2xl hover:bg-white/20 transition-all border border-white/10"
+            >
+              Sair da Conta
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -467,15 +489,27 @@ const AppContent = () => {
       case 'classes':
         return <ClassesView classes={classes} instructors={instructors} students={students} />;
       case 'mensalidades':
-        return <MensalidadesView students={students} payments={payments} plans={plans} />;
+        return <MensalidadesView students={students} payments={payments} plans={plans} processMensalidade={processMensalidade} />;
       case 'plans':
         return <PlansView plans={plans} />;
       case 'checkin':
-        return <CheckInTabletView students={students} classes={classes} settings={settings} plans={plans} checkIns={checkIns} />;
+        return <CheckInTabletView students={students} classes={classes} settings={settings} plans={plans} checkIns={checkIns} registerCheckIn={registerCheckIn} />;
       case 'users':
         return <UsersView users={users} />;
       case 'finance':
-        return <FinanceiroView payments={payments} students={students} plans={plans} expenses={expenses} installments={installments} onNavigate={setActiveTab} />;
+        return (
+          <FinanceiroView 
+            payments={payments} 
+            students={students} 
+            plans={plans} 
+            expenses={expenses} 
+            installments={installments} 
+            subscriptions={subscriptions}
+            invoices={invoices}
+            onNavigate={setActiveTab} 
+            processPayment={processPayment} 
+          />
+        );
       case 'reports':
         return <ReportsView payments={payments} expenses={expenses} students={students} />;
       case 'inventory':
@@ -541,44 +575,43 @@ const AppContent = () => {
       
       {/* Sidebar */}
       <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-gray-900 border-r border-gray-100 dark:border-white/5 transition-all duration-500 ease-in-out lg:translate-x-0 lg:static",
+        "fixed inset-y-0 left-0 z-50 w-64 glass-surface transition-all duration-500 ease-in-out lg:translate-x-0 lg:static",
         isSidebarOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"
       )}>
-        <div className="h-full flex flex-col p-6">
-          <div className="mb-12 px-2 flex items-center gap-3.5">
-            <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-xl shadow-black/5 overflow-hidden p-1.5 border border-gray-50">
+        <div className="h-full flex flex-col p-4">
+          <div className="mb-10 px-2 flex items-center gap-3">
+            <div className="w-10 h-10 bg-zinc-900 dark:bg-white rounded-xl flex items-center justify-center shadow-lg overflow-hidden p-1.5 transition-transform hover:scale-105">
               <Logo size="sm" settings={settings} />
             </div>
             <div className="flex flex-col">
               {gymInfo ? (
                 <>
-                  <span className="text-lg font-serif font-bold text-black dark:text-white italic tracking-tighter leading-none truncate max-w-[120px]">
+                  <span className="text-sm font-display font-bold text-zinc-900 dark:text-white tracking-tight leading-none truncate max-w-[120px]">
                     {gymInfo.name}
                   </span>
-                  <span className="text-[9px] tracking-[0.2em] font-bold text-gray-400 uppercase truncate">
+                  <span className="text-[9px] tracking-wider font-bold text-zinc-400 uppercase truncate">
                     {gymInfo.slug}
                   </span>
                 </>
               ) : (
                 <>
-                  <span className="text-lg font-serif font-bold text-black dark:text-white italic tracking-tighter leading-none">DojoSync</span>
-                  <span className="text-[9px] tracking-[0.2em] font-bold text-gray-400 uppercase">Master Admin</span>
+                  <span className="text-sm font-display font-bold text-zinc-900 dark:text-white tracking-tight leading-none">DojoSync</span>
+                  <span className="text-[9px] tracking-wider font-bold text-zinc-400 uppercase">Master Admin</span>
                 </>
               )}
             </div>
             <button 
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className="ml-auto p-2 bg-gray-50 dark:bg-white/10 rounded-xl hover:bg-gray-100 dark:hover:bg-white/20 transition-all text-gray-400"
+              className="ml-auto p-1.5 bg-zinc-50 dark:bg-white/5 rounded-lg hover:bg-zinc-100 dark:hover:bg-white/10 transition-all text-zinc-500"
             >
-              {isDarkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+              {isDarkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
             </button>
           </div>
           
-          <nav className="flex-1 space-y-1">
+          <nav className="flex-1 space-y-1 overflow-y-auto">
             {menuItems.map(item => {
-              // Priority for admin
               if (isAdmin) {
-                // Admin sees everything
+                // Show all
               } else if (item.permission && !permissions[item.permission]) {
                 return null;
               }
@@ -588,27 +621,27 @@ const AppContent = () => {
                   key={item.id}
                   onClick={() => { setActiveTab(item.id); setSidebarOpen(false); }}
                   className={cn(
-                    "w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold text-sm transition-all group",
+                    "w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all group",
                     activeTab === item.id 
-                      ? "bg-black text-white shadow-lg shadow-black/10" 
-                      : "text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white"
+                      ? "bg-zinc-900 text-white dark:bg-white dark:text-black shadow-md" 
+                      : "text-zinc-500 hover:bg-zinc-50 dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white"
                   )}
                 >
-                  <item.icon className={cn("w-5 h-5", activeTab === item.id ? "text-white" : "text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white")} />
+                  <item.icon className={cn("w-4 h-4", activeTab === item.id ? "text-current" : "text-zinc-400 group-hover:text-zinc-900 dark:group-hover:text-white")} />
                   {item.label}
                 </button>
               );
             })}
           </nav>
 
-          <div className="pt-6 border-t border-gray-50">
-            <div className="flex items-center gap-3 px-4 py-3 mb-4 bg-gray-50 rounded-2xl">
-              <div className="w-10 h-10 rounded-xl bg-white shadow-sm flex items-center justify-center text-gray-400 font-bold overflow-hidden">
+          <div className="pt-4 mt-4 border-t border-zinc-200/50 dark:border-white/5">
+            <div className="flex items-center gap-3 px-3 py-2.5 mb-2 bg-zinc-50 dark:bg-white/5 rounded-xl border border-zinc-100 dark:border-white/5">
+              <div className="w-8 h-8 rounded-lg bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center text-zinc-500 font-bold overflow-hidden text-xs">
                 {user.photoURL ? <img src={user.photoURL} alt="" className="w-full h-full object-cover" /> : user.displayName?.charAt(0)}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-gray-900 truncate">{user.displayName}</p>
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider truncate">{role}</p>
+                <p className="text-xs font-bold text-zinc-900 dark:text-white truncate">{user.displayName}</p>
+                <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider truncate">{role}</p>
               </div>
             </div>
 
@@ -634,23 +667,23 @@ const AppContent = () => {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 min-w-0 overflow-auto bg-[#fafafa] dark:bg-gray-950">
-        <div className="p-4 sm:p-6 lg:p-10 max-w-[1600px] mx-auto min-h-screen">
-          <header className="flex items-center justify-between mb-8 lg:hidden bg-white dark:bg-gray-900 p-4 rounded-3xl border border-gray-100 dark:border-white/5 shadow-sm">
+      <main className="flex-1 min-w-0 overflow-auto">
+        <div className="p-4 sm:p-6 lg:p-8 xl:p-10 max-w-[1500px] mx-auto min-h-screen">
+          <header className="flex items-center justify-between mb-8 lg:hidden glass-surface p-4 rounded-2xl shadow-sm">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white dark:bg-white/10 rounded-xl flex items-center justify-center shadow-xl shadow-black/5 overflow-hidden p-1.5 border border-gray-50 dark:border-white/10">
+              <div className="w-8 h-8 bg-zinc-900 dark:bg-white rounded-lg flex items-center justify-center shadow-lg overflow-hidden p-1 border border-gray-50">
                 <Logo size="sm" settings={settings} />
               </div>
-              <div className="flex flex-col">
-                <span className="text-lg font-serif font-bold text-black dark:text-white italic tracking-tighter leading-none">Gfteam</span>
-                <span className="text-[9px] tracking-[0.2em] font-bold text-gray-400 uppercase">Limeira</span>
+              <div className="flex flex-col text-left">
+                <span className="text-sm font-display font-bold text-zinc-900 dark:text-white tracking-tight leading-none">Gfteam</span>
+                <span className="text-[9px] tracking-wider font-bold text-zinc-400 uppercase">Limeira</span>
               </div>
             </div>
             <button 
               onClick={() => setSidebarOpen(true)} 
-              className="p-3 bg-black text-white rounded-2xl shadow-xl active:scale-95 transition-all"
+              className="p-2.5 bg-zinc-900 text-white rounded-xl shadow-lg active:scale-95 transition-all"
             >
-              <Menu className="w-6 h-6" />
+              <Menu className="w-5 h-5" />
             </button>
           </header>
           <div className="animate-in fade-in slide-in-from-bottom-2 duration-700">

@@ -22,9 +22,10 @@ interface MensalidadesViewProps {
   students: any[];
   payments: any[];
   plans: any[];
+  processMensalidade: (paymentData: any, student: any, duration: number) => Promise<void>;
 }
 
-export const MensalidadesView = ({ students, payments, plans }: MensalidadesViewProps) => {
+export const MensalidadesView = ({ students, payments, plans, processMensalidade }: MensalidadesViewProps) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'paid' | 'pending' | 'overdue'>('all');
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
@@ -62,7 +63,6 @@ export const MensalidadesView = ({ students, payments, plans }: MensalidadesView
       const duration = plan?.durationMonths || 1;
       const amount = parseFloat(paymentData.amount);
       
-      // Parse data localmente para evitar problemas de fuso horário
       const [year, month, day] = paymentData.date.split('-').map(Number);
       const paymentDate = new Date(year, month - 1, day);
       
@@ -72,46 +72,14 @@ export const MensalidadesView = ({ students, payments, plans }: MensalidadesView
       
       const currentPeriod = format(paymentDate, 'MMMM yyyy', { locale: ptBR });
 
-      // Verificar se já existe um registro pendente para este aluno e período
-      const pendingPayment = payments.find(p => 
-        p.studentId === selectedStudent.id && 
-        (p.status === 'Pending' || p.status === 'pending')
-      );
-
-      if (pendingPayment) {
-        // Atualiza o registro pendente existente
-        await updateDoc(doc(db, 'payments', pendingPayment.id), {
-          amount: amount,
-          method: paymentData.method,
-          date: Timestamp.fromDate(paymentDate),
-          status: 'Paid',
-          period: currentPeriod,
-          updatedAt: Timestamp.now()
-        });
-      } else {
-        // 1. Record new payment
-        await addDoc(collection(db, 'payments'), {
-          studentId: selectedStudent.id,
-          studentName: selectedStudent.name,
-          amount: amount,
-          method: paymentData.method,
-          date: Timestamp.fromDate(paymentDate),
-          type: 'mensalidade',
-          status: 'Paid',
-          period: currentPeriod,
-          createdAt: Timestamp.now()
-        });
-      }
-
-      // 2. Update student next payment date
-      const currentNextDate = selectedStudent.nextPaymentDate?.toDate() || new Date();
-      const newNextDate = new Date(currentNextDate);
-      newNextDate.setMonth(newNextDate.getMonth() + duration);
-
-      await updateDoc(doc(db, 'students', selectedStudent.id), {
-        lastPaymentDate: Timestamp.fromDate(paymentDate),
-        nextPaymentDate: Timestamp.fromDate(newNextDate)
-      });
+      await processMensalidade({
+        studentId: selectedStudent.id,
+        studentName: selectedStudent.name,
+        amount: amount,
+        method: paymentData.method,
+        date: Timestamp.fromDate(paymentDate),
+        period: currentPeriod,
+      }, selectedStudent, duration);
 
       toast.success(`Mensalidade de ${selectedStudent.name} recebida!`);
       setIsModalOpen(false);

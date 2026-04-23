@@ -1,0 +1,87 @@
+import { 
+  collection, 
+  query, 
+  orderBy, 
+  onSnapshot, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  deleteDoc, 
+  serverTimestamp,
+  Firestore,
+  getDocs,
+  QueryConstraint
+} from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from '../../../utils/errorHandlers';
+
+export abstract class BaseFirestoreRepository<T extends { id: string }> {
+  constructor(
+    protected db: Firestore,
+    protected collectionName: string,
+    protected defaultOrderBy: string = 'name'
+  ) {}
+
+  async getAll(...constraints: QueryConstraint[]): Promise<T[]> {
+    try {
+      const q = query(collection(this.db, this.collectionName), ...constraints, orderBy(this.defaultOrderBy));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.LIST, this.collectionName);
+      return [];
+    }
+  }
+
+  async getById(id: string): Promise<T | null> {
+    try {
+      const docRef = doc(this.db, this.collectionName, id);
+      const snapshot = await getDoc(docRef);
+      if (!snapshot.exists()) return null;
+      return { id: snapshot.id, ...snapshot.data() } as T;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, `${this.collectionName}/${id}`);
+      return null;
+    }
+  }
+
+  async save(entity: Partial<T>): Promise<string> {
+    try {
+      const id = entity.id || doc(collection(this.db, this.collectionName)).id;
+      const docRef = doc(this.db, this.collectionName, id);
+      
+      const data = {
+        ...entity,
+        updatedAt: serverTimestamp(),
+      };
+      
+      if (!entity.id) {
+        (data as any).createdAt = serverTimestamp();
+      }
+
+      await setDoc(docRef, data, { merge: true });
+      return id;
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, this.collectionName);
+      throw error;
+    }
+  }
+
+  async delete(id: string): Promise<void> {
+    try {
+      const docRef = doc(this.db, this.collectionName, id);
+      await deleteDoc(docRef);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `${this.collectionName}/${id}`);
+      throw error;
+    }
+  }
+
+  subscribe(callback: (data: T[]) => void, ...constraints: QueryConstraint[]): () => void {
+    const q = query(collection(this.db, this.collectionName), ...constraints, orderBy(this.defaultOrderBy));
+    return onSnapshot(q, (snapshot) => {
+      callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, this.collectionName);
+    });
+  }
+}

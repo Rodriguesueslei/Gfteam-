@@ -71,62 +71,65 @@ export const GraduationSuggestions = ({ students, checkIns, belts }: GraduationS
   if (suggestions.length === 0) return null;
 
   return (
-    <div className="p-8 bg-white border border-gray-100 shadow-sm rounded-[40px] space-y-6">
+    <div className="premium-card p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-amber-100 rounded-xl">
-            <Award className="w-5 h-5 text-amber-600" />
+          <div className="p-2 bg-zinc-100 dark:bg-white/5 rounded-xl">
+            <Award className="w-4 h-4 text-zinc-900 dark:text-white" />
           </div>
-          <h3 className="text-xl font-bold text-gray-900">Sugestões de Graduação</h3>
+          <div>
+            <h3 className="text-base font-bold text-zinc-900 dark:text-white tracking-tight">Pronto para Graduação</h3>
+            <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest leading-none">Análise automatizada</p>
+          </div>
         </div>
-        <TrendingUp className="w-5 h-5 text-emerald-500" />
+        <TrendingUp className="w-4 h-4 text-emerald-500" />
       </div>
 
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {suggestions.map(student => (
-          <div key={student.id} className="group p-4 bg-gray-50 hover:bg-gray-100 rounded-3xl transition-all border border-transparent hover:border-gray-200">
-            <div className="flex items-center justify-between mb-3">
+          <div key={student.id} className="group p-4 bg-zinc-50 dark:bg-white/2 rounded-2xl transition-all border border-transparent hover:border-zinc-200 dark:hover:border-white/10">
+            <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white shadow-sm flex items-center justify-center text-gray-400 font-bold">
+                <div className="w-8 h-8 rounded-full bg-white dark:bg-zinc-800 shadow-sm flex items-center justify-center text-[10px] font-bold text-zinc-400">
                   {student.name.charAt(0)}
                 </div>
-                <div>
-                  <p className="text-sm font-bold text-gray-900">{student.name}</p>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold text-zinc-900 dark:text-white truncate">{student.name}</p>
+                  <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-tight">
                     {student.belt} • {student.stripes} Graus
                   </p>
                 </div>
               </div>
               <div className="text-right">
                 <span className={cn(
-                  "px-2 py-1 rounded-lg text-[10px] font-bold uppercase",
-                  student.progress >= 100 ? "bg-emerald-100 text-emerald-600" : "bg-amber-100 text-amber-600"
+                  "px-2 py-0.5 rounded-lg text-[9px] font-bold uppercase",
+                  student.progress >= 100 ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600" : "bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300"
                 )}>
-                  {student.progress}% Pronto
+                  {student.progress}%
                 </span>
               </div>
             </div>
             
             <div className="space-y-2">
-              <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+              <div className="w-full h-1 bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden">
                 <div 
                   className={cn(
                     "h-full transition-all duration-1000",
-                    student.progress >= 100 ? "bg-emerald-500" : "bg-amber-500"
+                    student.progress >= 100 ? "bg-emerald-500" : "bg-zinc-900 dark:bg-white"
                   )}
                   style={{ width: `${Math.min(100, student.progress)}%` }}
                 />
               </div>
-              <p className="text-[10px] text-gray-400 font-medium italic">
-                {student.type === 'belt' ? 'Próxima Faixa' : 'Próximo Grau'}: {student.reason}
+              <p className="text-[9px] text-zinc-400 font-medium">
+                {student.type === 'belt' ? 'Meta de Faixa' : 'Meta de Grau'}: {student.reason}
               </p>
             </div>
           </div>
         ))}
       </div>
       
-      <button className="w-full py-4 bg-gray-900 text-white font-bold rounded-2xl hover:bg-black transition-all shadow-lg active:scale-95">
-        Ver Relatório Completo
+      <button className="w-full py-3 bg-zinc-50 dark:bg-white/5 text-zinc-900 dark:text-white text-xs font-bold rounded-xl hover:bg-zinc-100 dark:hover:bg-white/10 transition-all border border-zinc-200 dark:border-white/5 active:scale-[0.98]">
+        Ver Relatório Detalhado
       </button>
     </div>
   );

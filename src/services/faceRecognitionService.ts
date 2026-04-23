@@ -100,3 +100,33 @@ export const createFaceMatcher = (labeledDescriptors: faceapi.LabeledFaceDescrip
   );
   return new faceapi.FaceMatcher(validDescriptors, 0.55); // Slightly more strict for matching, but detector is more sensitive
 };
+
+// --- Production Backend Integration ---
+
+export const enrollFaceOnBackend = async (studentId: string, imageBase64: string) => {
+  try {
+    const response = await fetch('/api/face/enroll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ studentId, image: imageBase64 }),
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error enrolling face on backend:', error);
+    throw error;
+  }
+};
+
+export const verifyFaceOnBackend = async (imageBase64: string, tenantId?: string) => {
+  try {
+    const response = await fetch('/api/face/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: imageBase64, tenantId }),
+    });
+    return await response.json();
+  } catch (error) {
+    console.error('Error verifying face on backend:', error);
+    throw error;
+  }
+};

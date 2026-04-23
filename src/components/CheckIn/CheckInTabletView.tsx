@@ -30,9 +30,10 @@ interface CheckInTabletViewProps {
   settings: any;
   plans: any[];
   checkIns: any[];
+  registerCheckIn: (checkInData: any, classData: any) => Promise<string>;
 }
 
-export const CheckInTabletView = ({ students, classes, settings, plans, checkIns }: CheckInTabletViewProps) => {
+export const CheckInTabletView = ({ students, classes, settings, plans, checkIns, registerCheckIn }: CheckInTabletViewProps) => {
   const { isCheckInTablet } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: "" });
@@ -520,25 +521,20 @@ export const CheckInTabletView = ({ students, classes, settings, plans, checkIns
           continue; // Skip incompatible modality
         }
 
-        // Perform Check-in
+        // Perform Check-in using Service/Hook
         const currentPresence = targetClass.presence || [];
         if (currentPresence.includes(studentToProcess.id)) {
           alreadyPresentCount++;
         } else {
-          await updateDoc(doc(db, 'classes', targetClass.id), {
-            presence: [...currentPresence, studentToProcess.id]
-          });
-
-          await addDoc(collection(db, 'checkins'), {
+          await registerCheckIn({
             studentId: studentToProcess.id,
             studentName: studentToProcess.name,
             classId: targetClass.id,
             className: targetClass.name || targetClass.title || 'Aula',
             modality: targetClass.modality || 'Jiu-Jitsu',
-            time: Timestamp.now(),
             source: 'tablet',
             isGympass: fromGympass
-          });
+          }, targetClass);
 
           // If from Gympass, notify their API
           if (fromGympass && studentToProcess.gympassId) {

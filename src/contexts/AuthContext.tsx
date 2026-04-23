@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
 import { onAuthStateChanged, User, Auth, GoogleAuthProvider, linkWithPopup, unlink, EmailAuthProvider, sendPasswordResetEmail, updatePassword } from 'firebase/auth';
 import { auth as masterAuth, db as masterDb, createTenantInstance, logout as firebaseLogout, loginWithEmail as firebaseLoginWithEmail, googleProvider } from '../firebase';
-import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, collection, query, where, Firestore } from 'firebase/firestore';
+import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, where, Firestore } from 'firebase/firestore';
 
 export type UserRole = 'admin' | 'receptionist' | 'professor' | 'user' | 'checkin_tablet' | string;
 
@@ -90,6 +90,11 @@ const AuthContext = createContext<AuthContextType>({
   updateTenantConfig: async () => {},
   syncGymStats: async () => {}
 });
+
+const SUPER_ADMIN_EMAILS = [
+  "rodrigues.ueslei@gmail.com",
+  "ueslei.rodrigues@gmail.com"
+];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -271,7 +276,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const setupUserProfile = async () => {
       try {
-        const isSuperAdmin = user.email === "rodrigues.ueslei@gmail.com";
+        const isSuperAdmin = !!user.email && SUPER_ADMIN_EMAILS.includes(user.email);
         const hasExternalConfig = gymInfo?.config && gymInfo.config.apiKey;
         const targetDb = (hasExternalConfig && !isSuperAdmin) ? tenantDb : masterDb;
         
@@ -284,18 +289,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         let currentApproved: boolean = false;
 
         if (!userDoc.exists()) {
-          console.log("AuthContext: User profile not found, creating default.");
-          currentRole = isSuperAdmin ? 'admin' : 'user';
-          currentApproved = isSuperAdmin;
-          
-          await setDoc(userDocRef, {
-            name: user.displayName,
-            email: user.email,
-            photoURL: user.photoURL,
-            role: currentRole,
-            approved: currentApproved,
-            createdAt: serverTimestamp()
-          });
+          console.log("AuthContext: UID profile not found. Checking for Email profile:", user.email);
+          // Check for pre-approved profile by email (standard for new academies created by SuperAdmin)
+          const emailDocRef = doc(targetDb, 'users', user.email!.toLowerCase().trim());
+          const emailDoc = await getDoc(emailDocRef);
+
+          if (emailDoc.exists()) {
+            const emailData = emailDoc.data();
+            console.log("AuthContext: Found email-based profile! Role:", emailData.role);
+            currentRole = emailData.role || 'admin';
+            currentApproved = emailData.approved ?? true;
+            
+            // Create the UID-based document with the pre-approved data
+            await setDoc(userDocRef, {
+              ...emailData,
+              uid: user.uid,
+              name: user.displayName || emailData.name || 'Admin',
+              email: user.email,
+              role: currentRole,
+              approved: currentApproved,
+              createdAt: emailData.createdAt || serverTimestamp(),
+              updatedAt: serverTimestamp()
+            });
+
+            // Cleanup the email-based document if it's the master DB
+            if (targetDb === masterDb) {
+              try {
+                await deleteDoc(emailDocRef);
+              } catch (e) {
+                console.warn("AuthContext: Could not delete legacy email doc:", e);
+              }
+            }
+          } else {
+            console.log("AuthContext: No email profile found either, creating new pending.");
+            currentRole = isSuperAdmin ? 'admin' : 'user';
+            currentApproved = isSuperAdmin;
+            
+            await setDoc(userDocRef, {
+              name: user.displayName,
+              email: user.email,
+              photoURL: user.photoURL,
+              role: currentRole,
+              approved: currentApproved,
+              createdAt: serverTimestamp()
+            });
+          }
         } else {
           const data = userDoc.data();
           console.log("AuthContext: Profile loaded. Role:", data?.role);
@@ -338,7 +376,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user, gymInfo?.config?.apiKey, tenantDb, licenseLoading]); // Use more specific dependencies
 
-  const isSuperAdmin = user?.email === "rodrigues.ueslei@gmail.com";
+  const isSuperAdmin = !!user?.email && SUPER_ADMIN_EMAILS.includes(user.email);
   const isLicenseOwner = licenseStatus === 'active';
   const isAdmin = role === 'admin' || isSuperAdmin || isLicenseOwner;
   const isApprovedFinal = isApproved || isSuperAdmin || isLicenseOwner;

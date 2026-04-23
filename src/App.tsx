@@ -84,6 +84,7 @@ const AppContent = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isSendingReset, setIsSendingReset] = useState(false);
   const [viewMode, setViewMode] = useState<'professional' | 'student'>('professional');
   const [isSidebarOpen, setSidebarOpen] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -251,21 +252,32 @@ const AppContent = () => {
                 <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Senha</label>
                 <button 
                   type="button"
+                  disabled={isSendingReset}
                   onClick={async () => {
                     if (!email) {
                       toast.error("Digite seu e-mail primeiro.");
                       return;
                     }
+                    setIsSendingReset(true);
                     try {
                       await sendResetEmail(email);
-                      toast.success("E-mail de redefinição enviado!");
-                    } catch (e) {
-                      toast.error("Erro ao enviar e-mail. Verifique o endereço.");
+                      toast.success("E-mail de redefinição enviado para " + email);
+                    } catch (error: any) {
+                      console.error("Reset Email Error:", error);
+                      let message = "Erro ao enviar e-mail. Verifique o endereço.";
+                      if (error.code === 'auth/user-not-found') message = "E-mail não cadastrado no sistema.";
+                      else if (error.code === 'auth/invalid-email') message = "Endereço de e-mail inválido.";
+                      else if (error.code === 'auth/operation-not-allowed') message = "Redefinição de senha não habilitada no Firebase Console.";
+                      else if (error.code === 'auth/too-many-requests') message = "Muitas solicitações. Tente mais tarde.";
+                      
+                      toast.error(message);
+                    } finally {
+                      setIsSendingReset(false);
                     }
                   }}
-                  className="text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors"
+                  className="text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors disabled:opacity-50"
                 >
-                  Esqueci minha senha
+                  {isSendingReset ? "Enviando..." : "Esqueci minha senha"}
                 </button>
               </div>
               <input 

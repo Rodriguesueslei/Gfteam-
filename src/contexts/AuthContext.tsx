@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
-import { onAuthStateChanged, User, Auth, GoogleAuthProvider, linkWithPopup, unlink, EmailAuthProvider } from 'firebase/auth';
+import { onAuthStateChanged, User, Auth, GoogleAuthProvider, linkWithPopup, unlink, EmailAuthProvider, sendPasswordResetEmail, updatePassword } from 'firebase/auth';
 import { auth as masterAuth, db as masterDb, createTenantInstance, logout as firebaseLogout, loginWithEmail as firebaseLoginWithEmail, googleProvider } from '../firebase';
 import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, collection, query, where, Firestore } from 'firebase/firestore';
 
@@ -60,6 +60,8 @@ interface AuthContextType {
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   linkGoogle: () => Promise<void>;
   unlinkGoogle: () => Promise<void>;
+  sendResetEmail: (email: string) => Promise<void>;
+  updateMyPassword: (newPass: string) => Promise<void>;
   updateTenantConfig: (config: any) => Promise<void>;
   syncGymStats: (stats: { studentCount: number }) => Promise<void>;
 }
@@ -83,6 +85,8 @@ const AuthContext = createContext<AuthContextType>({
   loginWithEmail: async () => {},
   linkGoogle: async () => {},
   unlinkGoogle: async () => {},
+  sendResetEmail: async () => {},
+  updateMyPassword: async () => {},
   updateTenantConfig: async () => {},
   syncGymStats: async () => {}
 });
@@ -387,6 +391,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const sendResetEmail = async (email: string) => {
+    try {
+      await sendPasswordResetEmail(masterAuth, email);
+    } catch (error) {
+      console.error("Reset Email Error:", error);
+      throw error;
+    }
+  };
+
+  const updateMyPassword = async (newPass: string) => {
+    if (!masterAuth.currentUser) return;
+    try {
+      await updatePassword(masterAuth.currentUser, newPass);
+    } catch (error) {
+      console.error("Update Password Error:", error);
+      throw error;
+    }
+  };
+
   const updateTenantConfig = async (configData: any) => {
     if (!user?.email) return;
     const licenseId = user.email.toLowerCase().trim();
@@ -441,6 +464,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       loginWithEmail,
       linkGoogle,
       unlinkGoogle,
+      sendResetEmail,
+      updateMyPassword,
       updateTenantConfig,
       syncGymStats
     }}>

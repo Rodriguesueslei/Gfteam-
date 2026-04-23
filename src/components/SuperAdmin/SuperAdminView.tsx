@@ -26,6 +26,7 @@ import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth'
 import firebaseConfig from '../../../firebase-applet-config.json';
 import { collection, doc, setDoc, updateDoc, deleteDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
+import { useAuth } from '../../contexts/AuthContext';
 import { formatCurrency, cn } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 
@@ -34,6 +35,7 @@ interface SuperAdminViewProps {
 }
 
 export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
+  const { sendResetEmail } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedLicense, setSelectedLicense] = useState<any>(null);
@@ -90,16 +92,14 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
           await createUserWithEmailAndPassword(tempAuth, email, formData.ownerPassword);
           await signOut(tempAuth);
         } catch (authErr: any) {
-          if (authErr.code !== 'auth/email-already-in-use') {
+          if (authErr.code === 'auth/email-already-in-use') {
+            toast.error("Nota: Este e-mail já possui uma conta no sistema. A senha definida aqui NÃO foi aplicada. Use a opção de recuperar senha ou 'Enviar Redefinição' na tabela.", { duration: 8000 });
+          } else {
             console.error("Auth creation error:", authErr);
-            if (!isEditing) { // If creating, this is fatal
+            if (!isEditing) {
               toast.error("Erro ao criar conta de acesso: " + authErr.message, { id: loadingToast });
               return;
             }
-          }
-          // If editing and user exists, we can't update password via web SDK for others
-          if (isEditing && authErr.code === 'auth/email-already-in-use') {
-             // We'll just continue with license doc update
           }
         }
       }
@@ -452,6 +452,22 @@ service cloud.firestore {
                         title={license.status === 'active' ? 'Bloquear Acesso' : 'Ativar Acesso'}
                       >
                         {license.status === 'active' ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                      </button>
+                      <button 
+                        onClick={async () => {
+                          if (window.confirm(`Deseja enviar um e-mail de redefinição de senha para ${license.ownerEmail}?`)) {
+                            try {
+                              await sendResetEmail(license.ownerEmail);
+                              toast.success("E-mail de redefinição enviado!");
+                            } catch (e) {
+                              toast.error("Erro ao enviar e-mail.");
+                            }
+                          }
+                        }}
+                        className="p-2 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all"
+                        title="Enviar Redefinição de Senha"
+                      >
+                        <Mail className="w-4 h-4" />
                       </button>
                       <button 
                         onClick={() => handleDeleteClick(license.id)}

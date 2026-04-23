@@ -77,7 +77,8 @@ const AppContent = () => {
     licenseStatus,
     gymInfo,
     syncGymStats,
-    loginWithEmail
+    loginWithEmail,
+    sendResetEmail
   } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [email, setEmail] = useState('');
@@ -218,7 +219,16 @@ const AppContent = () => {
                 await loginWithEmail(email, password);
               } catch (error: any) {
                 console.error("Login error:", error);
-                toast.error("Erro ao fazer login: Verifique seu e-mail e senha.");
+                let message = "Erro ao fazer login: Verifique seu e-mail e senha.";
+                if (error.code === 'auth/user-not-found') message = "Usuário não encontrado.";
+                else if (error.code === 'auth/wrong-password') message = "Senha incorreta.";
+                else if (error.code === 'auth/invalid-email') message = "E-mail inválido.";
+                else if (error.code === 'auth/user-disabled') message = "Usuário desativado.";
+                else if (error.code === 'auth/too-many-requests') message = "Muitas tentativas. Tente novamente mais tarde.";
+                else if (error.code === 'auth/operation-not-allowed') message = "Login por e-mail/senha não está habilitado no Console do Firebase.";
+                else if (error.code === 'auth/invalid-credential') message = "Credenciais inválidas. Verifique seu e-mail e senha.";
+                
+                toast.error(message);
               } finally {
                 setIsLoggingIn(false);
               }
@@ -237,7 +247,27 @@ const AppContent = () => {
               />
             </div>
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-2">Senha</label>
+              <div className="flex items-center justify-between ml-2">
+                <label className="text-[10px] font-black uppercase tracking-widest text-gray-400">Senha</label>
+                <button 
+                  type="button"
+                  onClick={async () => {
+                    if (!email) {
+                      toast.error("Digite seu e-mail primeiro.");
+                      return;
+                    }
+                    try {
+                      await sendResetEmail(email);
+                      toast.success("E-mail de redefinição enviado!");
+                    } catch (e) {
+                      toast.error("Erro ao enviar e-mail. Verifique o endereço.");
+                    }
+                  }}
+                  className="text-[9px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors"
+                >
+                  Esqueci minha senha
+                </button>
+              </div>
               <input 
                 required
                 type="password"

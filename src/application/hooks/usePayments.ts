@@ -4,6 +4,7 @@ import { FirestorePaymentRepository } from '../../infrastructure/firebase/reposi
 import { useAuth } from '../../contexts/AuthContext';
 import { QueryConstraint, limit, where } from 'firebase/firestore';
 import { PaymentService } from '../services/PaymentService';
+import toast from 'react-hot-toast';
 
 export function usePayments(enabled: boolean, isAdmin?: boolean, studentIds?: string[]) {
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -50,5 +51,25 @@ export function usePayments(enabled: boolean, isAdmin?: boolean, studentIds?: st
     return await service.processMensalidade(paymentData, student, duration);
   };
 
-  return { payments, loading, processPayment, processMensalidade };
+  const updatePayment = async (id: string, data: Partial<Payment>) => {
+    try {
+      if (!repository) throw new Error("Repository not initialized");
+      await repository.save({ ...data, id } as any);
+    } catch (error) {
+      toast.error("Erro ao atualizar pagamento.");
+      throw error;
+    }
+  };
+
+  const deletePayment = async (id: string) => {
+    try {
+      if (!repository) throw new Error("Repository not initialized");
+      await repository.delete(id);
+    } catch (error) {
+      toast.error("Erro ao excluir pagamento.");
+      throw error;
+    }
+  };
+
+  return { payments, loading, processPayment, processMensalidade, updatePayment, deletePayment };
 }

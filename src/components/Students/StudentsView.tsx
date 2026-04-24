@@ -31,10 +31,16 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Timestamp, addDoc, collection, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useStudents } from '../../application/hooks/useStudents';
+import { useInstructors } from '../../application/hooks/useInstructors';
+import { useClasses } from '../../application/hooks/useClasses';
+import { usePlans } from '../../application/hooks/usePlans';
+import { useInvoices } from '../../application/hooks/useInvoices';
+import { usePayments } from '../../application/hooks/usePayments';
+import { useInstallments } from '../../application/hooks/useInstallments';
+import { useEvaluations } from '../../application/hooks/useEvaluations';
+import { useGraduations } from '../../application/hooks/useGraduations';
 import { cn, formatCurrency, getBeltColor } from '../../utils/formatters';
 import { handleFirestoreError, OperationType } from '../../utils/errorHandlers';
 import toast from 'react-hot-toast';
@@ -57,20 +63,26 @@ const maskCEP = (value: string) => {
     .replace(/(-\d{3})\d+?$/, '$1');
 };
 
-interface StudentsViewProps {
-  belts: any[];
-  students: any[];
-  instructors: any[];
-  plans: any[];
-  classes: any[];
-  evaluations: any[];
-  graduations: any[];
-  payments: any[];
-  installments: any[];
-}
+export const StudentsView = () => {
+  const { isAdmin, isReceptionist, user, permissions, gymInfo } = useAuth();
+  const belts = gymInfo?.settings?.belts || [];
+  const { 
+    students, 
+    addStudent, 
+    updateStudent,
+    addGraduation,
+    addEvaluation,
+    deleteEvaluation
+  } = useStudents(true, isAdmin || permissions.students, (isAdmin || permissions.students) ? undefined : user?.email);
 
-export const StudentsView = ({ belts, students: initialStudents, instructors, plans, classes, evaluations, graduations, payments, installments }: StudentsViewProps) => {
-  const { students, addStudent, updateStudent } = useStudents(true);
+  const { instructors } = useInstructors(true);
+  const { classes } = useClasses(true);
+  const { plans } = usePlans(true);
+  const { payments } = usePayments(true, isAdmin || permissions.finance);
+  const { installments } = useInstallments(isAdmin || permissions.finance);
+  const { invoices } = useInvoices(isAdmin || permissions.finance);
+  const { evaluations } = useEvaluations(true, isAdmin || permissions.students);
+  const { graduations } = useGraduations(true, isAdmin || permissions.students);
   const [searchTerm, setSearchTerm] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -92,7 +104,6 @@ export const StudentsView = ({ belts, students: initialStudents, instructors, pl
   const [isCapturing, setIsCapturing] = useState(false);
   const [isFaceModalOpen, setIsFaceModalOpen] = useState(false);
   const videoRef = React.useRef<HTMLVideoElement>(null);
-  const { isAdmin, isReceptionist, user } = useAuth();
   
   const [formData, setFormData] = useState({
     name: '',
@@ -173,7 +184,7 @@ export const StudentsView = ({ belts, students: initialStudents, instructors, pl
       const { nextPaymentDate, ...rest } = formData;
       const dataToSave = {
         ...rest,
-        nextPaymentDate: nextPaymentDate ? Timestamp.fromDate(new Date(nextPaymentDate)) : Timestamp.now(),
+        nextPaymentDate: nextPaymentDate ? new Date(nextPaymentDate) : new Date(),
         facePhoto: formData.facePhoto || editingStudent?.facePhoto || null,
         faceDescriptor: formData.faceDescriptor || editingStudent?.faceDescriptor || null
       };
@@ -183,8 +194,6 @@ export const StudentsView = ({ belts, students: initialStudents, instructors, pl
         toast.success("Aluno atualizado!");
       } else {
         await addStudent(dataToSave as any);
-        // Note: The payment generation logic should eventually move to a Use Case
-        // But for now, we keep it functional while fulfilling the "No direct firebase in UI"
         toast.success("Aluno cadastrado! Verifique as mensalidades.");
       }
       setIsModalOpen(false);
@@ -204,20 +213,20 @@ export const StudentsView = ({ belts, students: initialStudents, instructors, pl
     
     try {
       // Add record to graduation history
-      await addDoc(collection(db, 'graduations'), {
+      await addGraduation({
         studentId: selectedStudent.id,
         belt: graduationData.belt,
         stripes: graduationData.stripes,
         notes: graduationData.notes,
-        date: Timestamp.fromDate(new Date(graduationData.date)),
+        date: new Date(graduationData.date),
         instructorName: user?.displayName || 'Admin'
       });
 
       // Update student current rank
-      await updateDoc(doc(db, 'students', selectedStudent.id), {
+      await updateStudent(selectedStudent.id, {
         belt: graduationData.belt,
         stripes: graduationData.stripes
-      });
+      } as any);
 
       toast.success("Graduação registrada com sucesso!");
       setIsGraduationModalOpen(false);
@@ -230,7 +239,6 @@ export const StudentsView = ({ belts, students: initialStudents, instructors, pl
       });
 
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'graduations');
       toast.error("Erro ao registrar graduação.");
     }
   };
@@ -312,13 +320,13 @@ export const StudentsView = ({ belts, students: initialStudents, instructors, pl
     if (!selectedStudent || !evaluationNote) return;
 
     try {
-      await addDoc(collection(db, 'evaluations'), {
+      await addEvaluation({
         studentId: selectedStudent.id,
         professorId: user?.uid || '',
         professorName: user?.displayName || 'Professor',
         note: evaluationNote,
         type: evaluationType,
-        date: Timestamp.now()
+        date: new Date()
       });
       toast.success("Avaliação salva com sucesso!");
       setEvaluationNote("");
@@ -745,7 +753,7 @@ export const StudentsView = ({ belts, students: initialStudents, instructors, pl
                             <button 
                               onClick={async () => {
                                 if (confirm("Excluir esta observação?")) {
-                                  await deleteDoc(doc(db, 'evaluations', eval_.id));
+                                  await deleteEvaluation(eval_.id);
                                   toast.success("Observação excluída.");
                                 }
                               }}

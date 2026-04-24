@@ -25,23 +25,29 @@ import {
   Cell
 } from 'recharts';
 import { useAuth } from '../../contexts/AuthContext';
+import { useStudents } from '../../application/hooks/useStudents';
+import { usePayments } from '../../application/hooks/usePayments';
+import { useExpenses } from '../../application/hooks/useExpenses';
+import { useClasses } from '../../application/hooks/useClasses';
+import { useProducts } from '../../application/hooks/useProducts';
+import { useCheckIn } from '../../application/hooks/useCheckIn';
 import { StatCard } from '../ui/StatCard';
 import { GraduationSuggestions } from './GraduationSuggestions';
 import { formatCurrency, cn } from '../../utils/formatters';
 
 interface DashboardViewProps {
-  belts: any[];
-  students: any[];
-  payments: any[];
-  classes: any[];
-  expenses: any[];
-  products: any[];
-  checkIns: any[];
   onNavigate: (tab: string) => void;
 }
 
-export const DashboardView = ({ belts, students, payments, classes, expenses, products, checkIns, onNavigate }: DashboardViewProps) => {
-  const { isAdmin, permissions, gymInfo } = useAuth();
+export const DashboardView = ({ onNavigate }: DashboardViewProps) => {
+  const { isAdmin, permissions, gymInfo, user } = useAuth();
+  const belts = gymInfo?.settings?.belts || [];
+  const { students } = useStudents(true, isAdmin || permissions.students, (isAdmin || permissions.students) ? undefined : user?.email);
+  const { payments } = usePayments(true, isAdmin || permissions.finance);
+  const { expenses } = useExpenses(isAdmin || permissions.finance);
+  const { classes } = useClasses(true);
+  const { products } = useProducts(true);
+  const { checkIns } = useCheckIn(true, isAdmin || permissions.students);
   const [stats, setStats] = useState({
     totalStudents: 0,
     activeStudents: 0,
@@ -69,8 +75,8 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
 
     const monthlyExpenses = (expenses || [])
       .filter((e: any) => {
-        if (!e.date?.seconds) return false;
-        const eDate = new Date(e.date.seconds * 1000);
+        if (!e.date) return false;
+        const eDate = e.date.toDate ? e.date.toDate() : new Date(e.date);
         return eDate.getMonth() === now.getMonth() && eDate.getFullYear() === now.getFullYear();
       })
       .reduce((acc: number, curr: any) => {
@@ -134,8 +140,8 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
 
     const presence = last7Days.map(day => {
       const dayCheckins = checkIns.filter(c => {
-        if (!c.time?.seconds) return false;
-        const cDate = new Date(c.time.seconds * 1000);
+        if (!c.time) return false;
+        const cDate = c.time.toDate ? c.time.toDate() : new Date(c.time);
         return format(cDate, 'yyyy-MM-dd') === day;
       });
 
@@ -328,7 +334,7 @@ export const DashboardView = ({ belts, students, payments, classes, expenses, pr
                         <div className="ml-3">
                           <h4 className="text-xs font-bold text-zinc-900 dark:text-white">{cls.name}</h4>
                           <p className="text-[10px] text-zinc-400 font-medium uppercase tracking-tighter">
-                            {cls.dayOfWeek} • {typeof cls.startTime === 'string' ? cls.startTime : (cls.startTime?.seconds ? format(new Date(cls.startTime.seconds * 1000), 'HH:mm') : '')}
+                            {cls.dayOfWeek} • {typeof cls.startTime === 'string' ? cls.startTime : (cls.startTime ? format(cls.startTime.toDate ? cls.startTime.toDate() : new Date(cls.startTime), 'HH:mm') : '')}
                           </p>
                         </div>
                       </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Award, 
   Calendar, 
@@ -14,37 +14,33 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '../../contexts/AuthContext';
+import { useStudents } from '../../application/hooks/useStudents';
+import { usePayments } from '../../application/hooks/usePayments';
+import { useCheckIn } from '../../application/hooks/useCheckIn';
+import { useEvaluations } from '../../application/hooks/useEvaluations';
+import { useGraduations } from '../../application/hooks/useGraduations';
+import { useInstallments } from '../../application/hooks/useInstallments';
+import { useSettings } from '../../application/hooks/useSettings';
 import { formatCurrency, cn } from '../../utils/formatters';
 import { Logo } from '../ui/Logo';
 import { motion } from 'motion/react';
 import toast from 'react-hot-toast';
 
-interface StudentPortalViewProps {
-  students: any[];
-  payments: any[];
-  checkIns: any[];
-  belts: any[];
-  settings: any;
-  evaluations: any[];
-  graduations: any[];
-  installments: any[];
-}
-
-export const StudentPortalView = ({ students, payments, checkIns, belts, settings, evaluations, graduations, installments }: StudentPortalViewProps) => {
+export const StudentPortalView = () => {
   const { user, logout } = useAuth();
+  const { settings } = useSettings();
+  const { students } = useStudents(true, false, user?.email || undefined);
+  const { payments } = usePayments(true, false);
+  const { checkIns } = useCheckIn(true, false);
+  const { evaluations } = useEvaluations(true, false, user?.email || undefined);
+  const { graduations } = useGraduations(true, false, user?.email || undefined);
+  const { installments } = useInstallments(false);
+
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'finance' | 'timeline'>('dashboard');
-  const [studentData, setStudentData] = useState<any>(null);
-  const [myPayments, setMyPayments] = useState<any[]>([]);
-  const [myCheckIns, setMyCheckIns] = useState<any[]>([]);
-  const [myEvaluations, setMyEvaluations] = useState<any[]>([]);
-  const [myGraduations, setMyGraduations] = useState<any[]>([]);
-  const [myInstallments, setMyInstallments] = useState<any[]>([]);
-
-  const hasPendingPayments = myPayments.some(p => p.status === 'Pending') || myInstallments.some(i => i.status === 'pending');
 
   // Find all students linked to this email
-  const linkedStudents = students.filter(s => s.email === user?.email);
+  const linkedStudents = useMemo(() => students.filter(s => s.email === user?.email), [students, user?.email]);
 
   useEffect(() => {
     // Auto-select if there's only one student and none is selected
@@ -53,36 +49,66 @@ export const StudentPortalView = ({ students, payments, checkIns, belts, setting
     }
   }, [linkedStudents, selectedStudentId]);
 
-  useEffect(() => {
-    if (selectedStudentId) {
-      const student = linkedStudents.find(s => s.id === selectedStudentId);
-      setStudentData(student);
-      
-      if (student) {
-        const studentPayments = payments.filter(p => p.studentId === student.id);
-        const sortedPayments = [...studentPayments].sort((a, b) => (b.date?.seconds || 0) - (a.date?.seconds || 0));
-        setMyPayments(sortedPayments);
-        
-        const studentCheckIns = checkIns.filter(c => c.studentId === student.id);
-        const sortedCheckIns = [...studentCheckIns].sort((a, b) => (b.time?.seconds || 0) - (a.time?.seconds || 0));
-        setMyCheckIns(sortedCheckIns);
+  const studentData = useMemo(() => {
+    return selectedStudentId ? linkedStudents.find(s => s.id === selectedStudentId) : null;
+  }, [selectedStudentId, linkedStudents]);
 
-        const studentEvals = evaluations.filter(e => e.studentId === student.id);
-        const sortedEvals = [...studentEvals].sort((a, b) => (b.date?.seconds || 0) - (a.date?.seconds || 0));
-        setMyEvaluations(sortedEvals);
+  const myPayments = useMemo(() => {
+    if (!studentData) return [];
+    return payments
+      .filter(p => p.studentId === studentData.id)
+      .sort((a, b) => {
+        const bDate = b.date?.toDate ? b.date.toDate().getTime() : new Date(b.date || 0).getTime();
+        const aDate = a.date?.toDate ? a.date.toDate().getTime() : new Date(a.date || 0).getTime();
+        return bDate - aDate;
+      });
+  }, [payments, studentData]);
 
-        const studentGrads = graduations.filter(g => g.studentId === student.id);
-        const sortedGrads = [...studentGrads].sort((a, b) => (b.date?.seconds || 0) - (a.date?.seconds || 0));
-        setMyGraduations(sortedGrads);
+  const myCheckIns = useMemo(() => {
+    if (!studentData) return [];
+    return checkIns
+      .filter(c => c.studentId === studentData.id)
+      .sort((a, b) => {
+        const bDate = b.time?.toDate ? b.time.toDate().getTime() : new Date(b.time || 0).getTime();
+        const aDate = a.time?.toDate ? a.time.toDate().getTime() : new Date(a.time || 0).getTime();
+        return bDate - aDate;
+      });
+  }, [checkIns, studentData]);
 
-        const studentInsts = installments.filter(i => i.studentId === student.id);
-        const sortedInsts = [...studentInsts].sort((a, b) => (a.dueDate?.seconds || 0) - (b.dueDate?.seconds || 0));
-        setMyInstallments(sortedInsts);
-      }
-    } else {
-      setStudentData(null);
-    }
-  }, [selectedStudentId, linkedStudents, payments, checkIns, evaluations, graduations]);
+  const myEvaluations = useMemo(() => {
+    if (!studentData) return [];
+    return evaluations
+      .filter(e => e.studentId === studentData.id)
+      .sort((a, b) => {
+        const bDate = b.date?.toDate ? b.date.toDate().getTime() : new Date(b.date || 0).getTime();
+        const aDate = a.date?.toDate ? a.date.toDate().getTime() : new Date(a.date || 0).getTime();
+        return bDate - aDate;
+      });
+  }, [evaluations, studentData]);
+
+  const myGraduations = useMemo(() => {
+    if (!studentData) return [];
+    return graduations
+      .filter(g => g.studentId === studentData.id)
+      .sort((a, b) => {
+        const bDate = b.date?.toDate ? b.date.toDate().getTime() : new Date(b.date || 0).getTime();
+        const aDate = a.date?.toDate ? a.date.toDate().getTime() : new Date(a.date || 0).getTime();
+        return bDate - aDate;
+      });
+  }, [graduations, studentData]);
+
+  const myInstallments = useMemo(() => {
+    if (!studentData) return [];
+    return installments
+      .filter(i => i.studentId === studentData.id)
+      .sort((a, b) => {
+        const bDate = b.dueDate?.toDate ? b.dueDate.toDate().getTime() : new Date(b.dueDate || 0).getTime();
+        const aDate = a.dueDate?.toDate ? a.dueDate.toDate().getTime() : new Date(a.dueDate || 0).getTime();
+        return aDate - bDate;
+      });
+  }, [installments, studentData]);
+
+  const hasPendingPayments = myPayments.some(p => p.status === 'Pending') || myInstallments.some(i => i.status === 'pending');
 
   const handlePayment = async () => {
     if (!studentData) return;
@@ -302,7 +328,7 @@ export const StudentPortalView = ({ students, payments, checkIns, belts, setting
             <div className="px-6 py-4 bg-white/5 rounded-3xl border border-white/10 text-center">
               <p className="text-[10px] font-bold text-gray-400 uppercase mb-1">Frequência Mensal</p>
               <p className="text-2xl font-black italic">{myCheckIns.filter(c => {
-                const date = new Date(c.time.seconds * 1000);
+                const date = c.time?.toDate ? c.time.toDate() : new Date(c.time || Date.now());
                 return date.getMonth() === new Date().getMonth();
               }).length}</p>
             </div>
@@ -345,7 +371,7 @@ export const StudentPortalView = ({ students, payments, checkIns, belts, setting
                         </div>
                       </div>
                       <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">
-                        {grad.date?.seconds ? format(new Date(grad.date.seconds * 1000), 'dd MMM yyyy', { locale: ptBR }) : ''}
+                        {grad.date ? format(grad.date.toDate ? grad.date.toDate() : new Date(grad.date), 'dd MMM yyyy', { locale: ptBR }) : ''}
                       </span>
                     </div>
                     {grad.notes && <p className="text-sm text-gray-300 italic leading-relaxed">"{grad.notes}"</p>}
@@ -386,7 +412,7 @@ export const StudentPortalView = ({ students, payments, checkIns, belts, setting
                     {eval_.type}
                   </span>
                   <span className="text-[10px] text-gray-400 font-bold">
-                    {format(new Date(eval_.date.seconds * 1000), 'dd/MM/yyyy')}
+                    {format(eval_.date?.toDate ? eval_.date.toDate() : new Date(eval_.date || Date.now()), 'dd/MM/yyyy')}
                   </span>
                 </div>
                 <p className="text-sm text-gray-700 leading-relaxed italic">"{eval_.note}"</p>
@@ -416,13 +442,13 @@ export const StudentPortalView = ({ students, payments, checkIns, belts, setting
               <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Próximo Vencimento</p>
               <span className={cn(
                 "px-2 py-1 rounded-lg text-[10px] font-bold uppercase",
-                studentData.nextPaymentDate?.seconds * 1000 < Date.now() ? "bg-rose-100 text-rose-600" : "bg-emerald-100 text-emerald-600"
+                (studentData.nextPaymentDate?.toDate ? studentData.nextPaymentDate.toDate().getTime() : new Date(studentData.nextPaymentDate || 0).getTime()) < Date.now() ? "bg-rose-100 text-rose-600" : "bg-emerald-100 text-emerald-600"
               )}>
-                {studentData.nextPaymentDate?.seconds * 1000 < Date.now() ? "Atrasado" : "Em dia"}
+                {(studentData.nextPaymentDate?.toDate ? studentData.nextPaymentDate.toDate().getTime() : new Date(studentData.nextPaymentDate || 0).getTime()) < Date.now() ? "Atrasado" : "Em dia"}
               </span>
             </div>
             <p className="text-2xl font-black text-gray-900 italic">
-              {studentData.nextPaymentDate ? format(new Date(studentData.nextPaymentDate.seconds * 1000), "dd 'de' MMMM", { locale: ptBR }) : 'N/A'}
+              {studentData.nextPaymentDate ? format(studentData.nextPaymentDate.toDate ? studentData.nextPaymentDate.toDate() : new Date(studentData.nextPaymentDate), "dd 'de' MMMM", { locale: ptBR }) : 'N/A'}
             </p>
             <button 
               onClick={handlePayment}
@@ -438,7 +464,7 @@ export const StudentPortalView = ({ students, payments, checkIns, belts, setting
               <div key={p.id} className="flex items-center justify-between p-4 bg-white border border-gray-50 rounded-2xl">
                 <div>
                   <p className="text-sm font-bold text-gray-900">{p.period}</p>
-                  <p className="text-[10px] text-gray-400 font-bold uppercase">{p.date?.seconds ? format(new Date(p.date.seconds * 1000), 'dd/MM/yyyy') : ''}</p>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase">{p.date ? format(p.date.toDate ? p.date.toDate() : new Date(p.date), 'dd/MM/yyyy') : ''}</p>
                 </div>
                 <span className="text-sm font-black text-emerald-600">{formatCurrency(p.amount)}</span>
               </div>
@@ -462,7 +488,7 @@ export const StudentPortalView = ({ students, payments, checkIns, belts, setting
                   <div>
                     <p className="text-sm font-bold text-gray-900">{inst.productName}</p>
                     <p className="text-[10px] text-gray-400 font-bold uppercase">
-                      Vencimento: {inst.dueDate?.seconds ? format(new Date(inst.dueDate.seconds * 1000), 'dd/MM/yyyy') : 'N/A'} • {inst.installmentNumber}/{inst.totalInstallments}
+                      Vencimento: {inst.dueDate ? format(inst.dueDate.toDate ? inst.dueDate.toDate() : new Date(inst.dueDate), 'dd/MM/yyyy') : 'N/A'} • {inst.installmentNumber}/{inst.totalInstallments}
                     </p>
                   </div>
                   <div className="text-right">
@@ -502,7 +528,7 @@ export const StudentPortalView = ({ students, payments, checkIns, belts, setting
                     <div>
                       <p className="text-sm font-bold text-gray-900">{c.className}</p>
                       <p className="text-[10px] text-gray-400 font-bold uppercase">
-                        {c.time?.seconds ? format(new Date(c.time.seconds * 1000), "eeee, dd/MM", { locale: ptBR }) : ''}
+                        {c.time ? format(c.time.toDate ? c.time.toDate() : new Date(c.time), "eeee, dd/MM", { locale: ptBR }) : ''}
                       </p>
                     </div>
                   </div>

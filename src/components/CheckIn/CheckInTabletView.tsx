@@ -14,9 +14,13 @@ import {
 } from 'lucide-react';
 import { format, subMinutes, isWithinInterval, addMinutes, differenceInMinutes, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { Timestamp, addDoc, collection, doc, updateDoc } from 'firebase/firestore';
-import { db, logout } from '../../firebase';
+import { logout } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useStudents } from '../../application/hooks/useStudents';
+import { useClasses } from '../../application/hooks/useClasses';
+import { useSettings } from '../../application/hooks/useSettings';
+import { usePlans } from '../../application/hooks/usePlans';
+import { useCheckIn } from '../../application/hooks/useCheckIn';
 import { Logo } from '../ui/Logo';
 import { cn } from '../../utils/formatters';
 import { motion, AnimatePresence } from 'motion/react';
@@ -24,17 +28,14 @@ import toast from 'react-hot-toast';
 import { getFaceDescriptor, loadModels, createFaceMatcher } from '../../services/faceRecognitionService';
 import * as faceapi from 'face-api.js';
 
-interface CheckInTabletViewProps {
-  students: any[];
-  classes: any[];
-  settings: any;
-  plans: any[];
-  checkIns: any[];
-  registerCheckIn: (checkInData: any, classData: any) => Promise<string>;
-}
-
-export const CheckInTabletView = ({ students, classes, settings, plans, checkIns, registerCheckIn }: CheckInTabletViewProps) => {
+export const CheckInTabletView = () => {
   const { isCheckInTablet } = useAuth();
+  const { students } = useStudents(true);
+  const { classes } = useClasses();
+  const { settings } = useSettings();
+  const { plans } = usePlans();
+  const { checkIns, registerCheckIn } = useCheckIn(true);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: "" });
   const [mode, setMode] = useState<'selection' | 'manual' | 'facial' | 'gympass'>('selection');
@@ -66,8 +67,12 @@ export const CheckInTabletView = ({ students, classes, settings, plans, checkIns
     }
 
     const sorted = [...checkIns]
-      .filter(ci => ci.time?.seconds)
-      .sort((a, b) => b.time.seconds - a.time.seconds)
+      .filter(ci => ci.time)
+      .sort((a, b) => {
+        const bTime = b.time?.toDate ? b.time.toDate().getTime() : new Date(b.time || 0).getTime();
+        const aTime = a.time?.toDate ? a.time.toDate().getTime() : new Date(a.time || 0).getTime();
+        return bTime - aTime;
+      })
       .slice(0, 5);
     setRecentCheckIns(sorted);
   }, [checkIns]);
@@ -316,7 +321,7 @@ export const CheckInTabletView = ({ students, classes, settings, plans, checkIns
     const filtered = classes.filter((cls: any) => {
       // If the class has a specific date, check if it's today
       if (cls.date) {
-        const classDate = cls.date.seconds ? new Date(cls.date.seconds * 1000) : new Date(cls.date);
+        const classDate = cls.date.toDate ? cls.date.toDate() : new Date(cls.date);
         if (!isSameDay(classDate, now)) return false;
       } else {
         // Fallback for old classes without date field
@@ -348,8 +353,8 @@ export const CheckInTabletView = ({ students, classes, settings, plans, checkIns
     // Deduplicate by title + startTime + endTime
     const uniqueClasses = new Map();
     filtered.forEach((cls: any) => {
-      const timeStr = typeof cls.startTime === 'string' ? cls.startTime : format(new Date(cls.startTime.seconds * 1000), 'HH:mm');
-      const endTimeStr = typeof cls.endTime === 'string' ? cls.endTime : format(new Date(cls.endTime.seconds * 1000), 'HH:mm');
+      const timeStr = typeof cls.startTime === 'string' ? cls.startTime : format(cls.startTime.toDate ? cls.startTime.toDate() : new Date(cls.startTime), 'HH:mm');
+      const endTimeStr = typeof cls.endTime === 'string' ? cls.endTime : format(cls.endTime.toDate ? cls.endTime.toDate() : new Date(cls.endTime), 'HH:mm');
       const key = `${cls.title || cls.name}-${timeStr}-${endTimeStr}`;
       
       if (!uniqueClasses.has(key)) {
@@ -358,8 +363,8 @@ export const CheckInTabletView = ({ students, classes, settings, plans, checkIns
     });
 
     const result = Array.from(uniqueClasses.values()).sort((a, b) => {
-      const timeA = typeof a.startTime === 'string' ? a.startTime : format(new Date(a.startTime.seconds * 1000), 'HH:mm');
-      const timeB = typeof b.startTime === 'string' ? b.startTime : format(new Date(b.startTime.seconds * 1000), 'HH:mm');
+      const timeA = typeof a.startTime === 'string' ? a.startTime : format(a.startTime.toDate ? a.startTime.toDate() : new Date(a.startTime), 'HH:mm');
+      const timeB = typeof b.startTime === 'string' ? b.startTime : format(b.startTime.toDate ? b.startTime.toDate() : new Date(b.startTime), 'HH:mm');
       return timeA.localeCompare(timeB);
     });
 
@@ -379,9 +384,9 @@ export const CheckInTabletView = ({ students, classes, settings, plans, checkIns
       start.setHours(startH, startM, 0, 0);
       end = new Date(now);
       end.setHours(endH, endM, 0, 0);
-    } else if (cls.startTime?.seconds && cls.endTime?.seconds) {
-      start = new Date(cls.startTime.seconds * 1000);
-      end = new Date(cls.endTime.seconds * 1000);
+    } else if (cls.startTime && cls.endTime) {
+      start = cls.startTime.toDate ? cls.startTime.toDate() : new Date(cls.startTime);
+      end = cls.endTime.toDate ? cls.endTime.toDate() : new Date(cls.endTime);
     } else {
       return { label: 'Horário Inválido', color: 'text-gray-500' };
     }
@@ -470,9 +475,9 @@ export const CheckInTabletView = ({ students, classes, settings, plans, checkIns
           start.setHours(startH, startM, 0, 0);
           end = new Date(now);
           end.setHours(endH, endM, 0, 0);
-        } else if (cls.startTime?.seconds && cls.endTime?.seconds) {
-          start = new Date(cls.startTime.seconds * 1000);
-          end = new Date(cls.endTime.seconds * 1000);
+        } else if (cls.startTime && cls.endTime) {
+          start = cls.startTime.toDate ? cls.startTime.toDate() : new Date(cls.startTime);
+          end = cls.endTime.toDate ? cls.endTime.toDate() : new Date(cls.endTime);
         } else {
           return false;
         }
@@ -649,7 +654,7 @@ export const CheckInTabletView = ({ students, classes, settings, plans, checkIns
                   <div key={cls.id} className="p-4 bg-white/5 border border-white/10 rounded-2xl flex flex-col gap-1">
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">
-                        {typeof cls.startTime === 'string' ? cls.startTime : format(new Date(cls.startTime.seconds * 1000), 'HH:mm')}
+                        {typeof cls.startTime === 'string' ? cls.startTime : format(cls.startTime.toDate ? cls.startTime.toDate() : new Date(cls.startTime), 'HH:mm')}
                       </span>
                       <span className={cn("text-[10px] font-bold uppercase", status.color)}>
                         {status.label}
@@ -731,7 +736,7 @@ export const CheckInTabletView = ({ students, classes, settings, plans, checkIns
                           <span className="text-[10px] text-gray-500 font-medium uppercase tracking-widest">{checkIn.className}</span>
                         </div>
                         <div className="text-emerald-500 font-mono text-xs font-bold">
-                          {checkIn.time?.seconds ? format(new Date(checkIn.time.seconds * 1000), 'HH:mm') : '--:--'}
+                          {checkIn.time ? format(checkIn.time.toDate ? checkIn.time.toDate() : new Date(checkIn.time), 'HH:mm') : '--:--'}
                         </div>
                       </div>
                     ))}

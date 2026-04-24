@@ -1,16 +1,11 @@
 import React, { useState } from 'react';
-import { Shield, Mail, User, CheckCircle2, XCircle, Edit2, Trash2, Search, Settings as SettingsIcon, Plus, X, Lock, Check } from 'lucide-react';
-import { doc, updateDoc, deleteDoc, addDoc, collection } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { Shield, Mail, User as UserIcon, CheckCircle2, XCircle, Edit2, Trash2, Search, Settings as SettingsIcon, Plus, X, Lock, Check } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { useRoles } from '../../hooks/useFirebaseData';
+import { useUsers } from '../../application/hooks/useUsers';
+import { useRoles } from '../../application/hooks/useRoles';
 import { cn } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
-
-interface UsersViewProps {
-  users: any[];
-}
 
 const AVAILABLE_PERMISSIONS = [
   { id: 'dashboard', label: 'Dashboard', description: 'Acesso ao painel principal e estatísticas' },
@@ -26,11 +21,12 @@ const AVAILABLE_PERMISSIONS = [
   { id: 'reports', label: 'Relatórios', description: 'Visualização de relatórios detalhados' }
 ];
 
-export const UsersView = ({ users }: UsersViewProps) => {
+export const UsersView = () => {
   const [activeSubTab, setActiveSubTab] = useState<'users' | 'roles'>('users');
   const [searchTerm, setSearchTerm] = useState("");
   const { isAdmin } = useAuth();
-  const roles = useRoles(isAdmin);
+  const { users, updateUser, deleteUser } = useUsers(true);
+  const { roles, addRole, updateRole, deleteRole } = useRoles(isAdmin);
 
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<any>(null);
@@ -41,7 +37,7 @@ export const UsersView = ({ users }: UsersViewProps) => {
 
   const handleUpdateRole = async (userId: string, newRole: string) => {
     try {
-      await updateDoc(doc(db, 'users', userId), { role: newRole });
+      await updateUser(userId, { role: newRole });
       toast.success("Cargo atualizado!");
     } catch (error) {
       toast.error("Erro ao atualizar cargo.");
@@ -50,7 +46,7 @@ export const UsersView = ({ users }: UsersViewProps) => {
 
   const handleToggleApproval = async (userId: string, currentStatus: boolean) => {
     try {
-      await updateDoc(doc(db, 'users', userId), { approved: !currentStatus });
+      await updateUser(userId, { approved: !currentStatus });
       toast.success(!currentStatus ? "Usuário aprovado!" : "Acesso revogado!");
     } catch (error) {
       toast.error("Erro ao alterar status.");
@@ -66,10 +62,10 @@ export const UsersView = ({ users }: UsersViewProps) => {
     e.preventDefault();
     try {
       if (editingRole) {
-        await updateDoc(doc(db, 'roles', editingRole.id), roleFormData);
+        await updateRole(editingRole.id, roleFormData);
         toast.success("Cargo atualizado!");
       } else {
-        await addDoc(collection(db, 'roles'), roleFormData);
+        await addRole(roleFormData);
         toast.success("Cargo criado!");
       }
       setIsRoleModalOpen(false);
@@ -199,7 +195,7 @@ export const UsersView = ({ users }: UsersViewProps) => {
                       <button 
                         onClick={async () => {
                           if (confirm("Excluir este usuário permanentemente?")) {
-                            await deleteDoc(doc(db, 'users', user.id));
+                            await deleteUser(user.id);
                             toast.success("Usuário removido");
                           }
                         }}
@@ -250,7 +246,7 @@ export const UsersView = ({ users }: UsersViewProps) => {
                     <button 
                       onClick={async () => {
                         if (confirm(`Excluir o cargo "${role.name}"?`)) {
-                          await deleteDoc(doc(db, 'roles', role.id));
+                          await deleteRole(role.id);
                           toast.success("Cargo excluído");
                         }
                       }}

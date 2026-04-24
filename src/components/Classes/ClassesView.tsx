@@ -2,22 +2,31 @@ import React, { useState, useMemo } from 'react';
 import { Plus, Clock, Calendar as CalendarIcon, X, Edit2, Trash2, Users, Check, ChevronLeft, ChevronRight, Grid, List, Eye, UserX, UserCheck } from 'lucide-react';
 import { format, addDays, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { addDoc, collection, doc, updateDoc, deleteDoc, writeBatch, Timestamp } from 'firebase/firestore';
-import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { useClasses } from '../../application/hooks/useClasses';
 import { cn } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 
-interface ClassesViewProps {
-  classes: any[];
-  instructors: any[];
-  students: any[];
-}
+import { useInstructors } from '../../application/hooks/useInstructors';
+import { useStudents } from '../../application/hooks/useStudents';
 
-export const ClassesView = ({ classes, instructors, students }: ClassesViewProps) => {
+export const ClassesView = () => {
+  const { isAdmin, user, permissions } = useAuth();
+  const { instructors } = useInstructors(true);
+  const { students } = useStudents(true, isAdmin || permissions.students, (isAdmin || permissions.students) ? undefined : user?.email);
+  
+  const { 
+    classes, 
+    addBulkClasses, 
+    updateClass, 
+    updateBulkClasses, 
+    deleteClass, 
+    deleteBulkClasses 
+  } = useClasses();
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingClass, setEditingClass] = useState<any>(null);
   const [isPresenceModalOpen, setIsPresenceModalOpen] = useState(false);
@@ -33,8 +42,6 @@ export const ClassesView = ({ classes, instructors, students }: ClassesViewProps
   const nextDays = useMemo(() => {
     return Array.from({ length: 14 }).map((_, i) => addDays(startOfDay(new Date()), i));
   }, []);
-
-  const { isAdmin } = useAuth();
   
   const [formData, setFormData] = useState({
     title: '',
@@ -73,7 +80,7 @@ export const ClassesView = ({ classes, instructors, students }: ClassesViewProps
       ...formData,
       startTime: formData.startTime,
       endTime: formData.endTime,
-      updatedAt: Timestamp.now()
+      updatedAt: new Date()
     };
 
     if (editingClass && editingClass.recurrenceId) {
@@ -88,123 +95,104 @@ export const ClassesView = ({ classes, instructors, students }: ClassesViewProps
   const performSave = async (dataToSave: any, scope: 'single' | 'all' = 'single') => {
     try {
       if (editingClass) {
-        if (scope === 'all' && editingClass.recurrenceId) {
-          const batch = writeBatch(db);
-          const relatedClasses = classes.filter(c => c.recurrenceId === editingClass.recurrenceId);
-          
-          relatedClasses.forEach(cls => {
-            // Keep the original date but update other fields
-            batch.update(doc(db, 'classes', cls.id), dataToSave);
-          });
-          
-          await batch.commit();
-          toast.success("Todas as aulas recorrentes foram atualizadas!");
-        } else {
-          await updateDoc(doc(db, 'classes', editingClass.id), dataToSave);
-          toast.success("Aula atualizada!");
-        }
+      if (scope === 'all' && editingClass.recurrenceId) {
+        const relatedClasses = classes.filter(c => c.recurrenceId === editingClass.recurrenceId);
+        const updates = relatedClasses.map(cls => ({
+          id: cls.id,
+          data: dataToSave
+        }));
+        await updateBulkClasses(updates);
+        toast.success("Todas as aulas recorrentes foram atualizadas!");
       } else {
-        const batch = writeBatch(db);
-        const recurrenceId = Math.random().toString(36).substring(7);
-        const today = startOfDay(new Date());
-        
-        const dayToNumber: { [key: string]: number } = {
-          'Domingo': 0, 'Segunda': 1, 'Terça': 2, 'Quarta': 3, 'Quinta': 4, 'Sexta': 5, 'Sábado': 6
+        await updateClass(editingClass.id, dataToSave);
+        toast.success("Aula atualizada!");
+      }
+    } else {
+      const recurrenceId = Math.random().toString(36).substring(7);
+      const today = startOfDay(new Date());
+      
+      const dayToNumber: { [key: string]: number } = {
+        'Domingo': 0, 'Segunda': 1, 'Terça': 2, 'Quarta': 3, 'Quinta': 4, 'Sexta': 5, 'Sábado': 6
+      };
+
+      const classesToCreate: any[] = [];
+
+      for (const dayName of formData.daysOfWeek) {
+        const targetDay = dayToNumber[dayName];
+        const currentDay = today.getDay();
+        let daysUntilFirst = targetDay - currentDay;
+        const firstOccurrence = addDays(today, daysUntilFirst);
+
+        const classData = {
+          ...dataToSave,
+          dayOfWeek: dayName,
+          recurrenceId
         };
 
-        // For each selected day of week
-        for (const dayName of formData.daysOfWeek) {
-          const targetDay = dayToNumber[dayName];
-          const currentDay = today.getDay();
-          
-          // Calculate the date for the first occurrence (this week)
-          let daysUntilFirst = targetDay - currentDay;
-          // If the day has already passed this week, we could start from next week or stay in this week
-          // Let's stay in this week (even if past) to keep the offset logic simple
-          const firstOccurrence = addDays(today, daysUntilFirst);
-
-          const classData = {
-            ...dataToSave,
-            dayOfWeek: dayName,
-            recurrenceId
-          };
-
-          if (formData.isRecurring) {
-            // Create instances for the next X weeks
-            for (let i = 0; i < formData.recurrenceWeeks; i++) {
-              const instanceDate = addDays(firstOccurrence, i * 7);
-              const newClassRef = doc(collection(db, 'classes'));
-              batch.set(newClassRef, {
-                ...classData,
-                date: Timestamp.fromDate(instanceDate),
-                weekOffset: i,
-                instanceId: `${recurrenceId}-${dayName}-${i}`
-              });
-            }
-          } else {
-            const newClassRef = doc(collection(db, 'classes'));
-            batch.set(newClassRef, {
+        if (formData.isRecurring) {
+          for (let i = 0; i < (formData.recurrenceWeeks || 4); i++) {
+            const instanceDate = addDays(firstOccurrence, i * 7);
+            classesToCreate.push({
               ...classData,
-              date: Timestamp.fromDate(firstOccurrence),
-              instanceId: `${recurrenceId}-${dayName}-0`
+              date: instanceDate,
+              weekOffset: i,
+              instanceId: `${recurrenceId}-${dayName}-${i}`
             });
           }
+        } else {
+          classesToCreate.push({
+            ...classData,
+            date: firstOccurrence,
+            instanceId: `${recurrenceId}-${dayName}-0`
+          });
         }
-        
-        await batch.commit();
-        toast.success("Aula(s) criada(s)!");
       }
-      setIsModalOpen(false);
-      setShowUpdateScopeModal(false);
-      setPendingUpdateData(null);
-    } catch (error) {
-      console.error("Error saving class:", error);
-      toast.error("Erro ao salvar aula.");
+      
+      await addBulkClasses(classesToCreate);
+      toast.success("Aula(s) criada(s)!");
     }
-  };
+    setIsModalOpen(false);
+    setShowUpdateScopeModal(false);
+    setPendingUpdateData(null);
+  } catch (error) {
+    console.error("Error saving class:", error);
+    toast.error("Erro ao salvar aula.");
+  }
+};
 
-  const handleBulkDelete = async () => {
-    if (!confirm(`Deseja excluir as ${selectedClasses.length} aulas selecionadas?`)) return;
-    
-    try {
-      const batch = writeBatch(db);
-      selectedClasses.forEach(id => {
-        batch.delete(doc(db, 'classes', id));
-      });
-      await batch.commit();
-      setSelectedClasses([]);
-      toast.success("Aulas excluídas com sucesso!");
-    } catch (error) {
-      console.error("Bulk delete error:", error);
-      toast.error("Erro ao excluir aulas.");
+const handleBulkDelete = async () => {
+  if (!confirm(`Deseja excluir as ${selectedClasses.length} aulas selecionadas?`)) return;
+  
+  try {
+    await deleteBulkClasses(selectedClasses);
+    setSelectedClasses([]);
+    toast.success("Aulas excluídas com sucesso!");
+  } catch (error) {
+    console.error("Bulk delete error:", error);
+    toast.error("Erro ao excluir aulas.");
+  }
+};
+
+const performDelete = async (scope: 'single' | 'all' = 'single') => {
+  if (!classToDelete) return;
+
+  try {
+    if (scope === 'all' && classToDelete.recurrenceId) {
+      const relatedClasses = classes.filter(c => c.recurrenceId === classToDelete.recurrenceId);
+      const idsToDelete = relatedClasses.map(c => c.id);
+      await deleteBulkClasses(idsToDelete);
+      toast.success("Todas as aulas da série foram excluídas!");
+    } else {
+      await deleteClass(classToDelete.id);
+      toast.success("Aula excluída");
     }
-  };
-
-  const performDelete = async (scope: 'single' | 'all' = 'single') => {
-    if (!classToDelete) return;
-
-    try {
-      if (scope === 'all' && classToDelete.recurrenceId) {
-        const batch = writeBatch(db);
-        const relatedClasses = classes.filter(c => c.recurrenceId === classToDelete.recurrenceId);
-        
-        relatedClasses.forEach(cls => {
-          batch.delete(doc(db, 'classes', cls.id));
-        });
-        
-        await batch.commit();
-        toast.success("Todas as aulas da série foram excluídas!");
-      } else {
-        await deleteDoc(doc(db, 'classes', classToDelete.id));
-        toast.success("Aula excluída");
-      }
-      setShowDeleteScopeModal(false);
-      setClassToDelete(null);
-    } catch (error) {
-      console.error("Delete error:", error);
-      toast.error("Erro ao excluir aula");
-    }
-  };
+    setShowDeleteScopeModal(false);
+    setClassToDelete(null);
+  } catch (error) {
+    console.error("Delete error:", error);
+    toast.error("Erro ao excluir aula");
+  }
+};
 
   const toggleSelection = (id: string) => {
     setSelectedClasses(prev => 

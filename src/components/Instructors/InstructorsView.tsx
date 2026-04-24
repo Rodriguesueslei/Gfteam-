@@ -1,20 +1,15 @@
 import React, { useState } from 'react';
-import { Plus, Search, X, Edit2, Trash2, Phone, Mail, Shield } from 'lucide-react';
-import { addDoc, collection, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { Plus, X, Edit2, Trash2, Phone, Mail } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
-import { cn } from '../../utils/formatters';
-import toast from 'react-hot-toast';
+import { useInstructors } from '../../application/hooks/useInstructors';
 import { motion, AnimatePresence } from 'motion/react';
 
-interface InstructorsViewProps {
-  instructors: any[];
-}
-
-export const InstructorsView = ({ instructors }: InstructorsViewProps) => {
+export const InstructorsView = () => {
+  const { instructors, addInstructor, updateInstructor, deleteInstructor } = useInstructors();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingInstructor, setEditingInstructor] = useState<any>(null);
   const { isAdmin } = useAuth();
+  
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -27,15 +22,13 @@ export const InstructorsView = ({ instructors }: InstructorsViewProps) => {
     e.preventDefault();
     try {
       if (editingInstructor) {
-        await updateDoc(doc(db, 'instructors', editingInstructor.id), formData);
-        toast.success("Professor atualizado!");
+        await updateInstructor(editingInstructor.id, formData);
       } else {
-        await addDoc(collection(db, 'instructors'), formData);
-        toast.success("Professor cadastrado!");
+        await addInstructor(formData);
       }
       setIsModalOpen(false);
     } catch (error) {
-      toast.error("Erro ao salvar professor.");
+      // Error handled in hook
     }
   };
 
@@ -90,12 +83,7 @@ export const InstructorsView = ({ instructors }: InstructorsViewProps) => {
                   Editar
                 </button>
                 <button 
-                  onClick={async () => {
-                    if (confirm("Deseja excluir este professor?")) {
-                      await deleteDoc(doc(db, 'instructors', instructor.id));
-                      toast.success("Professor excluído");
-                    }
-                  }}
+                  onClick={() => deleteInstructor(instructor.id)}
                   className="p-2 text-gray-400 hover:text-rose-500 transition-colors"
                 >
                   <Trash2 className="w-5 h-5" />

@@ -28,16 +28,19 @@ import {
 import { format, startOfMonth, endOfMonth, isWithinInterval, parseISO, subMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { formatCurrency, cn } from '../../utils/formatters';
+import { useAuth } from '../../contexts/AuthContext';
+import { useStudents } from '../../application/hooks/useStudents';
+import { usePayments } from '../../application/hooks/usePayments';
+import { useExpenses } from '../../application/hooks/useExpenses';
 import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 
-interface ReportsViewProps {
-  payments: any[];
-  expenses: any[];
-  students: any[];
-}
+export const ReportsView = () => {
+  const { isAdmin, permissions, user } = useAuth();
+  const { students } = useStudents(true, isAdmin || permissions.students, (isAdmin || permissions.students) ? undefined : user?.email);
+  const { payments } = usePayments(true, isAdmin || permissions.finance);
+  const { expenses } = useExpenses(isAdmin || permissions.finance);
 
-export const ReportsView = ({ payments, expenses, students }: ReportsViewProps) => {
   const [dateRange, setDateRange] = useState({
     start: format(subMonths(new Date(), 1), 'yyyy-MM-dd'),
     end: format(new Date(), 'yyyy-MM-dd')
@@ -54,12 +57,12 @@ export const ReportsView = ({ payments, expenses, students }: ReportsViewProps) 
     const end = parseISO(dateRange.end);
 
     const filteredPayments = payments.filter(p => {
-      const pDate = new Date(p.date.seconds * 1000);
+      const pDate = p.date?.toDate ? p.date.toDate() : new Date(p.date || Date.now());
       return isWithinInterval(pDate, { start, end });
     });
 
     const filteredExpenses = expenses.filter(e => {
-      const eDate = new Date(e.date.seconds * 1000);
+      const eDate = e.date?.toDate ? e.date.toDate() : new Date(e.date || Date.now());
       const matchesDate = isWithinInterval(eDate, { start, end });
       const matchesCategory = selectedCategory === 'all' || e.category === selectedCategory;
       return matchesDate && matchesCategory;
@@ -100,7 +103,7 @@ export const ReportsView = ({ payments, expenses, students }: ReportsViewProps) 
       
       // Prepare payments sheet
       const paymentsSheet = filteredData.payments.map(p => ({
-        Data: format(new Date(p.date.seconds * 1000), 'dd/MM/yyyy'),
+        Data: format(p.date?.toDate ? p.date.toDate() : new Date(p.date || Date.now()), 'dd/MM/yyyy'),
         Aluno: students.find(s => s.id === p.studentId)?.name || 'Visitante',
         Valor: p.amount,
         Metodo: p.method,
@@ -112,7 +115,7 @@ export const ReportsView = ({ payments, expenses, students }: ReportsViewProps) 
 
       // Prepare expenses sheet
       const expensesSheet = filteredData.expenses.map(e => ({
-        Data: format(new Date(e.date.seconds * 1000), 'dd/MM/yyyy'),
+        Data: format(e.date?.toDate ? e.date.toDate() : new Date(e.date || Date.now()), 'dd/MM/yyyy'),
         Descricao: e.description,
         Valor: e.amount,
         Categoria: e.category
@@ -324,11 +327,15 @@ export const ReportsView = ({ payments, expenses, students }: ReportsViewProps) 
               {[
                 ...filteredData.payments.map(p => ({ ...p, _type: 'payment' })),
                 ...filteredData.expenses.map(e => ({ ...e, _type: 'expense' }))
-              ].sort((a, b) => b.date.seconds - a.date.seconds).map((item: any) => (
+              ].sort((a, b) => {
+                const bDate = b.date?.toDate ? b.date.toDate().getTime() : new Date(b.date || 0).getTime();
+                const aDate = a.date?.toDate ? a.date.toDate().getTime() : new Date(a.date || 0).getTime();
+                return bDate - aDate;
+              }).map((item: any) => (
                 <tr key={item.id} className="hover:bg-gray-50/50 transition-colors group">
                   <td className="px-8 py-5">
                     <span className="text-xs font-black text-gray-900">
-                      {format(new Date(item.date.seconds * 1000), 'dd/MM/yyyy HH:mm')}
+                      {format(item.date?.toDate ? item.date.toDate() : new Date(item.date || Date.now()), 'dd/MM/yyyy HH:mm')}
                     </span>
                   </td>
                   <td className="px-8 py-5">

@@ -6,6 +6,9 @@ export interface CheckIn {
   className: string;
   time: any; // Firestore Timestamp
   type: string; // 'manual' | 'qr' | etc.
+  modality?: string;
+  source?: string;
+  isGympass?: boolean;
   tenantId: string;
 }
 

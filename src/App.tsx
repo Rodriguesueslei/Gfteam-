@@ -26,17 +26,18 @@ import { usePayments } from './application/hooks/usePayments';
 import { useCheckIn } from './application/hooks/useCheckIn';
 import { useSubscriptions } from './application/hooks/useSubscriptions';
 import { useInvoices } from './application/hooks/useInvoices';
+import { useInstructors } from './application/hooks/useInstructors';
+import { useExpenses } from './application/hooks/useExpenses';
+import { useInstallments } from './application/hooks/useInstallments';
+import { usePlans } from './application/hooks/usePlans';
+import { useClasses } from './application/hooks/useClasses';
+import { useProducts } from './application/hooks/useProducts';
+import { useSales } from './application/hooks/useSales';
 import { 
   useBelts, 
-  useClasses, 
-  useInstructors, 
-  usePlans, 
-  useProducts, 
-  useSales, 
   useUsers, 
-  useExpenses, 
   useSettings,
-  useInstallments,
+  useInstallments as useInstallmentsLegacy,
   useEvaluations,
   useGraduations,
   usePrivateSettings,
@@ -111,13 +112,13 @@ const AppContent = () => {
   const belts = useBelts(!!user);
   const { students: studentsData, loading: studentsLoading } = useStudents(!!user, isAdmin || permissions.students, user?.email);
   const students = studentsData || [];
-  const classes = useClasses(!!user);
-  const instructors = useInstructors(!!user);
-  const plans = usePlans(!!user);
-  const products = useProducts(!!user);
-  const sales = useSales(!!user);
+  const { classes } = useClasses(!!user);
+  const { instructors } = useInstructors(!!user);
+  const { plans } = usePlans(!!user);
+  const { products } = useProducts(!!user);
+  const { sales } = useSales(!!user);
   const users = useUsers(isAdmin || permissions.users);
-  const expenses = useExpenses(isAdmin || permissions.finance);
+  const { expenses } = useExpenses(isAdmin || permissions.finance);
   const settings = useSettings(!!user);
   const secrets = usePrivateSettings(isAdmin);
   const backups = useBackups(isAdmin);
@@ -141,7 +142,7 @@ const AppContent = () => {
   }, [students, user?.email, role]);
 
   const { checkIns, registerCheckIn } = useCheckIn(!!user, isAdmin || permissions.students, (isAdmin || permissions.students) ? undefined : myStudentIds);
-  const installments = useInstallments(isAdmin || permissions.finance);
+  const { installments } = useInstallments(isAdmin || permissions.finance);
   const evaluations = useEvaluations(!!user, isAdmin || permissions.students, myStudentIds);
   const graduations = useGraduations(!!user, isAdmin || permissions.students, myStudentIds);
   const { payments, processPayment, processMensalidade } = usePayments(!!user, isAdmin || permissions.finance, myStudentIds);
@@ -324,7 +325,7 @@ const AppContent = () => {
               className="w-full flex items-center justify-center gap-3 px-8 py-4 bg-gray-50 text-gray-600 font-bold text-sm rounded-2xl hover:bg-gray-100 transition-all active:scale-[0.98]"
             >
               <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" className="w-4 h-4" alt="" />
-              Google Authentication
+              Acessar com Google
             </button>
           </form>
 
@@ -441,16 +442,7 @@ const AppContent = () => {
             </div>
           )}
 
-          <StudentPortalView 
-            students={students} 
-            payments={payments} 
-            checkIns={checkIns} 
-            belts={belts} 
-            settings={settings} 
-            evaluations={evaluations}
-            graduations={graduations}
-            installments={installments}
-          />
+          <StudentPortalView />
         </div>
         
         {/* Global Fallback Logout for Students */}
@@ -471,49 +463,32 @@ const AppContent = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        return <DashboardView belts={belts} students={students} payments={payments} classes={classes} expenses={expenses} products={products} checkIns={checkIns} onNavigate={setActiveTab} />;
+        return <DashboardView onNavigate={setActiveTab} />;
       case 'students':
-        return <StudentsView 
-          belts={belts} 
-          students={students} 
-          instructors={instructors} 
-          plans={plans} 
-          classes={classes} 
-          evaluations={evaluations} 
-          graduations={graduations} 
-          payments={payments}
-          installments={installments}
-        />;
+        return <StudentsView />;
       case 'instructors':
-        return <InstructorsView instructors={instructors} />;
+        return <InstructorsView />;
       case 'classes':
-        return <ClassesView classes={classes} instructors={instructors} students={students} />;
+        return <ClassesView />;
       case 'mensalidades':
-        return <MensalidadesView students={students} payments={payments} plans={plans} processMensalidade={processMensalidade} />;
+        return <MensalidadesView />;
       case 'plans':
-        return <PlansView plans={plans} />;
+        return <PlansView />;
       case 'checkin':
-        return <CheckInTabletView students={students} classes={classes} settings={settings} plans={plans} checkIns={checkIns} registerCheckIn={registerCheckIn} />;
+        return <CheckInTabletView />;
       case 'users':
-        return <UsersView users={users} />;
+        return <UsersView />;
       case 'finance':
         return (
           <FinanceiroView 
-            payments={payments} 
-            students={students} 
-            plans={plans} 
-            expenses={expenses} 
-            installments={installments} 
-            subscriptions={subscriptions}
-            invoices={invoices}
             onNavigate={setActiveTab} 
-            processPayment={processPayment} 
+            settings={settings}
           />
         );
       case 'reports':
-        return <ReportsView payments={payments} expenses={expenses} students={students} />;
+        return <ReportsView />;
       case 'inventory':
-        return <InventoryView products={products} sales={sales} students={students} />;
+        return <InventoryView />;
       case 'superadmin':
         return <SuperAdminView licenses={licenses} />;
       case 'settings':
@@ -535,7 +510,7 @@ const AppContent = () => {
           backups={backups}
         />;
       default:
-        return <DashboardView belts={belts} students={students} payments={payments} classes={classes} expenses={expenses} products={products} checkIns={checkIns} onNavigate={setActiveTab} />;
+        return <DashboardView onNavigate={setActiveTab} />;
     }
   };
 
@@ -596,7 +571,7 @@ const AppContent = () => {
               ) : (
                 <>
                   <span className="text-sm font-display font-bold text-zinc-900 dark:text-white tracking-tight leading-none">DojoSync</span>
-                  <span className="text-[9px] tracking-wider font-bold text-zinc-400 uppercase">Master Admin</span>
+                  <span className="text-[9px] tracking-wider font-bold text-zinc-400 uppercase">Admin Master</span>
                 </>
               )}
             </div>
@@ -641,7 +616,13 @@ const AppContent = () => {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold text-zinc-900 dark:text-white truncate">{user.displayName}</p>
-                <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider truncate">{role}</p>
+                <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider truncate">
+                  {role === 'admin' ? 'Administrador' : 
+                   role === 'professor' ? 'Professor' : 
+                   role === 'receptionist' ? 'Recepcionista' : 
+                   role === 'superadmin' ? 'Super Admin' : 
+                   role === 'checkin_tablet' ? 'Tablet Check-in' : 'Aluno'}
+                </p>
               </div>
             </div>
 

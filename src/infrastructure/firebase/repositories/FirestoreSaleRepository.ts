@@ -1,0 +1,24 @@
+import { Firestore } from 'firebase/firestore';
+import { BaseFirestoreRepository } from './BaseFirestoreRepository';
+import { ISale, ISaleRepository } from '../../../application/ports/ISaleRepository';
+
+export class FirestoreSaleRepository 
+  extends BaseFirestoreRepository<ISale & { id: string }> 
+  implements ISaleRepository {
+  
+  constructor(db: Firestore) {
+    super(db, 'sales', 'date');
+  }
+
+  async findAll(): Promise<ISale[]> {
+    return this.getAll();
+  }
+
+  async add(sale: Omit<ISale, 'id'>): Promise<string> {
+    return this.save(sale);
+  }
+
+  async update(id: string, sale: Partial<ISale>): Promise<void> {
+    await this.save({ ...sale, id });
+  }
+}

@@ -12,19 +12,22 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
+import { useProducts } from '../../application/hooks/useProducts';
+import { useSales } from '../../application/hooks/useSales';
+import { useStudents } from '../../application/hooks/useStudents';
+import { useInstallments } from '../../application/hooks/useInstallments';
 import { formatCurrency, cn } from '../../utils/formatters';
 import { StatCard } from '../ui/StatCard';
 import { motion, AnimatePresence } from 'motion/react';
-import { addDoc, collection, doc, updateDoc, Timestamp } from 'firebase/firestore';
-import { db } from '../../firebase';
 import toast from 'react-hot-toast';
 
-interface InventoryViewProps {
-  products: any[];
-  sales: any[];
-}
+export const InventoryView = () => {
+  const { isAdmin, permissions, user } = useAuth();
+  const { products, addProduct, updateProduct } = useProducts(isAdmin || permissions.inventory);
+  const { sales, addSale } = useSales(isAdmin || permissions.inventory);
+  const { students } = useStudents(true, isAdmin || permissions.students, (isAdmin || permissions.students) ? undefined : user?.email);
+  const { addInstallment } = useInstallments(isAdmin || permissions.finance);
 
-export const InventoryView = ({ products, sales, students }: { products: any[], sales: any[], students: any[] }) => {
   const [activeSubTab, setActiveSubTab] = useState('products');
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -46,10 +49,90 @@ export const InventoryView = ({ products, sales, students }: { products: any[], 
     date: format(new Date(), 'yyyy-MM-dd'),
     firstPaymentDate: format(new Date(), 'yyyy-MM-dd')
   });
-  const { isAdmin } = useAuth();
 
   const lowStockCount = products.filter(p => p.stock <= (p.minStock || 5)).length;
   const totalStockValue = products.reduce((acc, curr) => acc + (curr.stock * (curr.price || 0)), 0);
+
+  const handleSaleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const product = products.find(p => p.id === saleFormData.productId);
+      if (!product) return;
+      if (product.stock <= 0) {
+        toast.error("Produto sem estoque!");
+        return;
+      }
+
+      const student = students.find(s => s.id === saleFormData.studentId);
+      const saleId = Math.random().toString(36).substring(7);
+
+      // 1. Record sale
+      await addSale({
+        studentId: saleFormData.studentId || 'Avulso',
+        studentName: student?.name || 'Venda Avulsa',
+        items: [{
+          productId: product.id!,
+          productName: product.name,
+          quantity: 1,
+          price: saleFormData.amount
+        }],
+        totalAmount: saleFormData.amount,
+        paymentMethod: saleFormData.method,
+        date: new Date(saleFormData.date),
+        status: 'completed'
+      });
+
+      // 2. Generate installments if applicable
+      if (saleFormData.installments > 1 && saleFormData.method === 'Parcelado Academia') {
+        const installmentAmount = saleFormData.amount / saleFormData.installments;
+        const startDate = new Date(saleFormData.firstPaymentDate + 'T12:00:00');
+
+        for (let i = 0; i < saleFormData.installments; i++) {
+          const dueDate = new Date(startDate);
+          dueDate.setMonth(dueDate.getMonth() + i);
+
+          await addInstallment({
+            saleId,
+            studentId: saleFormData.studentId || null,
+            studentName: student?.name || 'Venda Avulsa',
+            productName: product.name,
+            amount: installmentAmount,
+            installmentNumber: i + 1,
+            totalInstallments: saleFormData.installments,
+            dueDate: dueDate,
+            status: 'pending',
+            paymentMethod: saleFormData.method
+          });
+        }
+      }
+
+      // 3. Update stock
+      await updateProduct(product.id!, {
+        stock: product.stock - 1
+      });
+
+      toast.success("Venda realizada!");
+      setIsSaleModalOpen(false);
+    } catch (err) {
+      toast.error("Erro ao processar venda.");
+    }
+  };
+
+  const handleProductSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editingProduct) {
+        await updateProduct(editingProduct.id, productFormData);
+        toast.success("Produto atualizado!");
+      } else {
+        await addProduct(productFormData);
+        toast.success("Produto cadastrado!");
+      }
+      setIsModalOpen(false);
+    } catch (err) {
+      toast.error("Erro ao salvar produto.");
+    }
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-500">
@@ -185,7 +268,7 @@ export const InventoryView = ({ products, sales, students }: { products: any[], 
                     </td>
                     <td className="px-8 py-5">
                       <span className="text-xs text-gray-500 font-medium uppercase">
-                        {s.date?.seconds ? format(new Date(s.date.seconds * 1000), 'dd/MM/yyyy HH:mm') : 'N/A'}
+                        {s.date ? format(s.date.toDate ? s.date.toDate() : new Date(s.date), 'dd/MM/yyyy HH:mm') : 'N/A'}
                       </span>
                     </td>
                     <td className="px-8 py-5">
@@ -210,65 +293,7 @@ export const InventoryView = ({ products, sales, students }: { products: any[], 
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsSaleModalOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-md bg-white rounded-[40px] shadow-2xl overflow-hidden p-8">
               <h2 className="text-2xl font-black text-black italic uppercase tracking-tighter mb-6">Nova Venda</h2>
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                try {
-                  const product = products.find(p => p.id === saleFormData.productId);
-                  if (!product) return;
-                  if (product.stock <= 0) {
-                    toast.error("Produto sem estoque!");
-                    return;
-                  }
-
-                  const student = students.find(s => s.id === saleFormData.studentId);
-                  const saleId = Math.random().toString(36).substring(7);
-
-                  // 1. Record sale
-                  await addDoc(collection(db, 'sales'), {
-                    ...saleFormData,
-                    saleId,
-                    productName: product.name,
-                    studentName: student?.name || 'Venda Avulsa',
-                    date: Timestamp.fromDate(new Date(saleFormData.date)),
-                    createdAt: Timestamp.now()
-                  });
-
-                  // 2. Generate installments if applicable
-                  if (saleFormData.installments > 1 && saleFormData.method === 'Parcelado Academia') {
-                    const installmentAmount = saleFormData.amount / saleFormData.installments;
-                    const startDate = new Date(saleFormData.firstPaymentDate + 'T12:00:00'); // Use T12:00:00 to avoid timezone shifts
-
-                    for (let i = 0; i < saleFormData.installments; i++) {
-                      const dueDate = new Date(startDate);
-                      dueDate.setMonth(dueDate.getMonth() + i);
-
-                      await addDoc(collection(db, 'installments'), {
-                        saleId,
-                        studentId: saleFormData.studentId || null,
-                        studentName: student?.name || 'Venda Avulsa',
-                        productName: product.name,
-                        amount: installmentAmount,
-                        installmentNumber: i + 1,
-                        totalInstallments: saleFormData.installments,
-                        dueDate: Timestamp.fromDate(dueDate),
-                        status: 'pending',
-                        paymentMethod: saleFormData.method,
-                        createdAt: Timestamp.now()
-                      });
-                    }
-                  }
-
-                  // 3. Update stock
-                  await updateDoc(doc(db, 'products', product.id), {
-                    stock: product.stock - 1
-                  });
-
-                  toast.success("Venda realizada!");
-                  setIsSaleModalOpen(false);
-                } catch (err) {
-                  toast.error("Erro ao processar venda.");
-                }
-              }} className="space-y-4">
+              <form onSubmit={handleSaleSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-gray-400 ml-4">Produto</label>
                   <select 
@@ -350,21 +375,7 @@ export const InventoryView = ({ products, sales, students }: { products: any[], 
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setIsModalOpen(false)} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="relative w-full max-w-md bg-white rounded-[40px] shadow-2xl overflow-hidden p-8">
               <h2 className="text-2xl font-black text-black italic uppercase tracking-tighter mb-6">{editingProduct ? 'Editar Produto' : 'Novo Produto'}</h2>
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                try {
-                  if (editingProduct) {
-                    await updateDoc(doc(db, 'products', editingProduct.id), productFormData);
-                    toast.success("Produto atualizado!");
-                  } else {
-                    await addDoc(collection(db, 'products'), productFormData);
-                    toast.success("Produto cadastrado!");
-                  }
-                  setIsModalOpen(false);
-                } catch (err) {
-                  toast.error("Erro ao salvar produto.");
-                }
-              }} className="space-y-4">
+              <form onSubmit={handleProductSubmit} className="space-y-4">
                 <input required placeholder="Nome do Produto" className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none" value={productFormData.name} onChange={e => setProductFormData({...productFormData, name: e.target.value})} />
                 <input required placeholder="Categoria" className="w-full px-6 py-4 bg-gray-50 rounded-2xl outline-none" value={productFormData.category} onChange={e => setProductFormData({...productFormData, category: e.target.value})} />
                 <div className="grid grid-cols-2 gap-4">

@@ -29,38 +29,55 @@ import {
   Cell
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
-import { Timestamp, addDoc, collection, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePayments } from '../../application/hooks/usePayments';
+import { useExpenses } from '../../application/hooks/useExpenses';
+import { useInstallments } from '../../application/hooks/useInstallments';
+import { useSubscriptions } from '../../application/hooks/useSubscriptions';
+import { useInvoices } from '../../application/hooks/useInvoices';
+import { useStudents } from '../../application/hooks/useStudents';
+import { usePlans } from '../../application/hooks/usePlans';
 import { SubscriptionsView } from './SubscriptionsView';
 import { InvoicesView } from './InvoicesView';
 import { formatCurrency, cn } from '../../utils/formatters';
-import { handleFirestoreError, OperationType } from '../../utils/errorHandlers';
 import toast from 'react-hot-toast';
 
 interface FinanceiroViewProps {
-  payments: any[];
-  students: any[];
-  plans: any[];
-  expenses: any[];
-  installments: any[];
-  subscriptions: any[];
-  invoices: any[];
   onNavigate: (tab: string) => void;
-  processPayment: (paymentData: any) => Promise<string>;
+  settings: any;
 }
 
 export const FinanceiroView = ({ 
-  payments, 
-  students, 
-  plans, 
-  expenses, 
-  installments, 
-  subscriptions,
-  invoices,
-  onNavigate, 
-  processPayment 
+  onNavigate,
+  settings
 }: FinanceiroViewProps) => {
+  const { isAdmin, isReceptionist, permissions } = useAuth();
+  
+  const { 
+    payments, 
+    processPayment, 
+    processMensalidade, 
+    updatePayment, 
+    deletePayment 
+  } = usePayments(true, isAdmin || permissions.finance);
+  
+  const { 
+    expenses, 
+    addExpense, 
+    updateExpense, 
+    deleteExpense 
+  } = useExpenses(isAdmin || permissions.finance);
+  
+  const { 
+    installments, 
+    updateInstallment 
+  } = useInstallments(isAdmin || permissions.finance);
+  
+  const { subscriptions } = useSubscriptions(isAdmin || permissions.finance);
+  const { invoices } = useInvoices(isAdmin || permissions.finance);
+  const { students, updateStudent } = useStudents(true, isAdmin || permissions.students);
+  const { plans } = usePlans(true);
+
   const [activeSubTab, setActiveSubTab] = useState('history');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -68,7 +85,6 @@ export const FinanceiroView = ({
   const [editingExpense, setEditingExpense] = useState<any>(null);
   const [installmentFilter, setInstallmentFilter] = useState<'all' | 'pending' | 'paid' | 'overdue'>('all');
   const [searchTerm, setSearchTerm] = useState('');
-  const { isAdmin, isReceptionist } = useAuth();
   
   const [formData, setFormData] = useState({
     studentId: '',
@@ -143,13 +159,13 @@ export const FinanceiroView = ({
       const data = {
         studentId: formData.studentId,
         amount: parseFloat(formData.amount),
-        method: formData.method,
+        method: formData.method as any,
         period: formData.period,
-        date: Timestamp.fromDate(new Date(formData.date))
+        date: new Date(formData.date)
       };
 
       if (editingPayment) {
-        await updateDoc(doc(db, 'payments', editingPayment.id), data);
+        await updatePayment(editingPayment.id, data);
         toast.success("Pagamento atualizado!");
       } else {
         await processPayment(data);
@@ -159,9 +175,12 @@ export const FinanceiroView = ({
         const duration = plan?.durationMonths || 1;
 
         if (formData.studentId) {
-          await updateDoc(doc(db, 'students', formData.studentId), {
-            lastPaymentDate: Timestamp.fromDate(new Date(formData.date)),
-            nextPaymentDate: Timestamp.fromDate(new Date(new Date(formData.date).setMonth(new Date(formData.date).getMonth() + duration)))
+          const nextPaymentDate = new Date(formData.date);
+          nextPaymentDate.setMonth(nextPaymentDate.getMonth() + duration);
+          
+          await updateStudent(formData.studentId, {
+            lastPaymentDate: new Date(formData.date),
+            nextPaymentDate: nextPaymentDate
           });
         }
         toast.success("Pagamento registrado com sucesso!");
@@ -170,7 +189,7 @@ export const FinanceiroView = ({
       setIsModalOpen(false);
       setEditingPayment(null);
     } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, 'payments');
+      console.error("Error processing payment:", error);
       toast.error("Erro ao processar pagamento.");
     }
   };
@@ -178,22 +197,22 @@ export const FinanceiroView = ({
   const handleReceiveInstallment = async (installment: any) => {
     try {
       // 1. Update installment status
-      await updateDoc(doc(db, 'installments', installment.id), {
+      await updateInstallment(installment.id, {
         status: 'paid',
-        paidAt: Timestamp.now()
+        paidAt: new Date()
       });
 
       // 2. Record as a payment in cash flow
-      await addDoc(collection(db, 'payments'), {
+      await processPayment({
         studentId: installment.studentId,
         amount: installment.amount,
         method: 'Pix', // Default or ask user
         period: format(new Date(), 'MMMM yyyy'),
-        date: Timestamp.now(),
+        date: new Date(),
         type: 'installment',
         saleId: installment.saleId,
         description: `Parcela ${installment.installmentNumber}/${installment.totalInstallments} - ${installment.productName}`
-      });
+      } as any);
 
       toast.success("Parcela recebida com sucesso!");
     } catch (err) {
@@ -526,7 +545,10 @@ export const FinanceiroView = ({
                   </td>
                   <td className="px-8 py-5">
                     <span className="px-3 py-1 bg-gray-100 text-gray-600 text-[10px] font-bold rounded-full uppercase tracking-wider">
-                      {p.method}
+                      {p.method === 'Pix' ? 'Pix' : 
+                       p.method === 'Card' ? 'Cartão' : 
+                       p.method === 'Cash' ? 'Dinheiro' : 
+                       p.method === 'Transfer' ? 'Transferência' : p.method}
                     </span>
                   </td>
                     {isAdmin && (
@@ -534,7 +556,7 @@ export const FinanceiroView = ({
                         <button 
                           onClick={async () => {
                             if (window.confirm("Deseja excluir este pagamento?")) {
-                              await deleteDoc(doc(db, 'payments', p.id));
+                              await deletePayment(p.id);
                               toast.success("Pagamento excluído.");
                             }
                           }}
@@ -566,7 +588,7 @@ export const FinanceiroView = ({
                       <button 
                         onClick={async () => {
                           if (window.confirm("Deseja excluir esta despesa?")) {
-                            await deleteDoc(doc(db, 'expenses', e.id));
+                            await deleteExpense(e.id);
                             toast.success("Despesa excluída.");
                           }
                         }}
@@ -762,15 +784,16 @@ export const FinanceiroView = ({
                 <form onSubmit={async (e) => {
                   e.preventDefault();
                   try {
-                    await addDoc(collection(db, 'expenses'), {
+                    await addExpense({
                       description: expenseFormData.description,
                       amount: parseFloat(expenseFormData.amount),
                       category: expenseFormData.category,
-                      date: Timestamp.fromDate(new Date(expenseFormData.date))
+                      date: new Date(expenseFormData.date)
                     });
                     toast.success("Despesa registrada!");
                     setIsExpenseModalOpen(false);
                   } catch (err) {
+                    console.error("Error saving expense:", err);
                     toast.error("Erro ao salvar despesa.");
                   }
                 }} className="space-y-6">

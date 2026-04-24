@@ -13,19 +13,19 @@ import {
 import { format, isAfter, isBefore, startOfMonth, endOfMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { formatCurrency, cn } from '../../utils/formatters';
-import { Timestamp, addDoc, collection, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { useStudents } from '../../application/hooks/useStudents';
+import { usePayments } from '../../application/hooks/usePayments';
+import { usePlans } from '../../application/hooks/usePlans';
 import toast from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
+import { useAuth } from '../../contexts/AuthContext';
 
-interface MensalidadesViewProps {
-  students: any[];
-  payments: any[];
-  plans: any[];
-  processMensalidade: (paymentData: any, student: any, duration: number) => Promise<void>;
-}
-
-export const MensalidadesView = ({ students, payments, plans, processMensalidade }: MensalidadesViewProps) => {
+export const MensalidadesView = () => {
+  const { isAdmin, permissions } = useAuth();
+  const { students } = useStudents(true, isAdmin || permissions.students);
+  const { plans } = usePlans(true);
+  const { processMensalidade } = usePayments(true, isAdmin || permissions.finance);
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [filter, setFilter] = useState<'all' | 'paid' | 'pending' | 'overdue'>('all');
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
@@ -38,7 +38,8 @@ export const MensalidadesView = ({ students, payments, plans, processMensalidade
 
   const getStatus = (student: any) => {
     if (!student.nextPaymentDate) return 'pending';
-    const nextDate = student.nextPaymentDate.toDate();
+    // Handle both Firestore Timestamp and regular Date
+    const nextDate = student.nextPaymentDate.toDate ? student.nextPaymentDate.toDate() : new Date(student.nextPaymentDate);
     const now = new Date();
     
     if (isBefore(nextDate, now)) return 'overdue';
@@ -76,8 +77,8 @@ export const MensalidadesView = ({ students, payments, plans, processMensalidade
         studentId: selectedStudent.id,
         studentName: selectedStudent.name,
         amount: amount,
-        method: paymentData.method,
-        date: Timestamp.fromDate(paymentDate),
+        method: paymentData.method as any,
+        date: paymentDate,
         period: currentPeriod,
       }, selectedStudent, duration);
 
@@ -155,7 +156,7 @@ export const MensalidadesView = ({ students, payments, plans, processMensalidade
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-gray-400 font-bold uppercase tracking-widest">Vencimento</span>
                   <span className="text-gray-900 font-black">
-                    {student.nextPaymentDate ? format(student.nextPaymentDate.toDate(), 'dd/MM/yyyy') : 'N/A'}
+                    {student.nextPaymentDate ? format(student.nextPaymentDate.toDate ? student.nextPaymentDate.toDate() : new Date(student.nextPaymentDate), 'dd/MM/yyyy') : 'N/A'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-xs">

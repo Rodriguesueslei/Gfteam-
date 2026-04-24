@@ -7,17 +7,13 @@ import {
   X,
   AlertCircle
 } from 'lucide-react';
-import { collection, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../firebase';
+import { usePlans } from '../../application/hooks/usePlans';
 import { cn } from '../../utils/formatters';
 import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 
-interface PlansViewProps {
-  plans: any[];
-}
-
-export const PlansView = ({ plans }: PlansViewProps) => {
+export const PlansView = () => {
+  const { plans, addPlan, updatePlan, deletePlan } = usePlans(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<any>(null);
   const [planForm, setPlanForm] = useState({
@@ -33,17 +29,15 @@ export const PlansView = ({ plans }: PlansViewProps) => {
     e.preventDefault();
     try {
       if (editingPlan) {
-        await updateDoc(doc(db, 'plans', editingPlan.id), planForm);
+        await updatePlan(editingPlan.id, planForm);
         toast.success("Plano atualizado!");
       } else {
-        await addDoc(collection(db, 'plans'), {
-          ...planForm,
-          createdAt: serverTimestamp()
-        });
+        await addPlan(planForm);
         toast.success("Plano criado!");
       }
       setIsModalOpen(false);
     } catch (error) {
+      console.error("Error saving plan:", error);
       toast.error("Erro ao salvar plano.");
     }
   };
@@ -58,7 +52,7 @@ export const PlansView = ({ plans }: PlansViewProps) => {
         <button 
           onClick={() => {
             setEditingPlan(null);
-            setPlanForm({ name: '', price: 0, durationMonths: 1, description: '', status: 'Active' });
+            setPlanForm({ name: '', price: 0, durationMonths: 1, description: '', status: 'Active', allowedModalities: ['Jiu-Jitsu'] });
             setIsModalOpen(true);
           }}
           className="flex items-center justify-center px-6 py-2 text-sm font-bold text-white bg-black rounded-xl hover:bg-gray-800 transition-all shadow-lg"
@@ -85,7 +79,7 @@ export const PlansView = ({ plans }: PlansViewProps) => {
                 <button 
                   onClick={async () => {
                     if (confirm("Deseja excluir este plano? Isso não afetará alunos já vinculados.")) {
-                      await deleteDoc(doc(db, 'plans', plan.id));
+                      await deletePlan(plan.id);
                       toast.success("Plano removido");
                     }
                   }}

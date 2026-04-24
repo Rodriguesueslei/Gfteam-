@@ -20,6 +20,8 @@ export interface Student {
   createdAt: any;
   updatedAt?: any;
   lastCheckIn?: any;
+  lastPaymentDate?: any;
+  nextPaymentDate?: any;
   tenantId: string;
 }
 

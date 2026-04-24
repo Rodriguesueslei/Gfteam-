@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { CheckIn } from '../../core/entities/CheckIn';
+import { CheckIn, CheckInFilters } from '../../core/entities/CheckIn';
 import { FirestoreCheckInRepository } from '../../infrastructure/firebase/repositories/FirestoreCheckInRepository';
 import { useAuth } from '../../contexts/AuthContext';
-import { QueryConstraint, limit, where } from 'firebase/firestore';
 import { CheckInService } from '../services/CheckInService';
 
 export function useCheckIn(enabled: boolean, isAdmin?: boolean, studentIds?: string[]) {
@@ -26,15 +25,25 @@ export function useCheckIn(enabled: boolean, isAdmin?: boolean, studentIds?: str
 
     setLoading(true);
     
-    const constraints: QueryConstraint[] = [];
-    if (!isAdmin && studentIds && studentIds.length > 0) {
-      constraints.push(where('studentId', 'in', studentIds));
+    const filters: CheckInFilters = {
+      limit: 500
+    };
+
+    if (isAdmin) {
+      // Fetch all for admin
+    } else if (studentIds && studentIds.length > 0) {
+      filters.studentIds = studentIds;
+    } else {
+      // Not admin and no student IDs - don't fetch anything
+      setCheckIns([]);
+      setLoading(false);
+      return;
     }
     
     const unsubscribe = repository.subscribe((data) => {
       setCheckIns(data);
       setLoading(false);
-    }, ...constraints, limit(500));
+    }, filters);
 
     return () => unsubscribe();
   }, [enabled, repository, isAdmin, studentIds]);

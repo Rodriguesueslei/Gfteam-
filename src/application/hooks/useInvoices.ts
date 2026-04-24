@@ -1,38 +1,46 @@
-import { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, limit, orderBy } from 'firebase/firestore';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { Invoice } from '../../core/entities/Invoice';
-import { handleFirestoreError, OperationType } from '../../utils/errorHandlers';
+import { FirestoreInvoiceRepository } from '../../infrastructure/firebase/repositories/FirestoreInvoiceRepository';
 
 export function useInvoices(enabled: boolean) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const { tenantDb } = useAuth();
 
+  const repository = useMemo(() => {
+    return tenantDb ? new FirestoreInvoiceRepository(tenantDb) : null;
+  }, [tenantDb]);
+
   useEffect(() => {
-    if (!enabled || !tenantDb) {
+    if (!enabled || !repository) {
       setLoading(false);
       return;
     }
 
     setLoading(true);
-    const q = query(
-      collection(tenantDb, 'invoices'),
-      orderBy('dueDate', 'desc'),
-      limit(200)
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Invoice[];
+    const unsubscribe = repository.subscribe((data) => {
       setInvoices(data);
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'invoices');
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [enabled, tenantDb]);
+  }, [enabled, repository]);
 
-  return { invoices, loading };
+  const addInvoice = async (data: Omit<Invoice, 'id'>) => {
+    if (!repository) throw new Error("Repository not initialized");
+    return await repository.create(data);
+  };
+
+  const updateInvoice = async (id: string, data: Partial<Invoice>) => {
+    if (!repository) throw new Error("Repository not initialized");
+    return await repository.update(id, data);
+  };
+
+  const deleteInvoice = async (id: string) => {
+    if (!repository) throw new Error("Repository not initialized");
+    return await repository.delete(id);
+  };
+
+  return { invoices, loading, addInvoice, updateInvoice, deleteInvoice };
 }

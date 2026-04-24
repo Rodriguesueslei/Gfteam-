@@ -21,6 +21,7 @@ import { useClasses } from '../../application/hooks/useClasses';
 import { useSettings } from '../../application/hooks/useSettings';
 import { usePlans } from '../../application/hooks/usePlans';
 import { useCheckIn } from '../../application/hooks/useCheckIn';
+import { useTabletCheckIn } from '../../application/hooks/useTabletCheckIn';
 import { Logo } from '../ui/Logo';
 import { cn } from '../../utils/formatters';
 import { motion, AnimatePresence } from 'motion/react';
@@ -34,7 +35,14 @@ export const CheckInTabletView = () => {
   const { classes } = useClasses();
   const { settings } = useSettings();
   const { plans } = usePlans();
-  const { checkIns, registerCheckIn } = useCheckIn(true);
+  const { checkIns } = useCheckIn(true);
+  const { 
+    getTodayPortuguese, 
+    findOverlappingClasses, 
+    processCheckIn, 
+    validateGympassToken,
+    validateGympassById 
+  } = useTabletCheckIn(classes, students);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [status, setStatus] = useState<{ type: 'success' | 'error' | null, message: string }>({ type: null, message: "" });
@@ -44,7 +52,6 @@ export const CheckInTabletView = () => {
   const [loadingStep, setLoadingStep] = useState("");
   const [isScanning, setIsScanning] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [selectedClass, setSelectedClass] = useState<any>(null);
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
   const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
   const [pendingStudent, setPendingStudent] = useState<any>(null);
@@ -212,12 +219,7 @@ export const CheckInTabletView = () => {
                       setIsCheckingIn(true);
                       try {
                         toast.loading("Validando Wellhub (Gympass)...", { id: 'gympass-auto' });
-                        const response = await fetch('/api/gympass/validate-by-id', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ gympassId: student.gympassId })
-                        });
-                        const data = await response.json();
+                        const data = await validateGympassById(student.gympassId);
                         
                         if (data.valid) {
                           toast.success("Check-in Wellhub detectado!", { id: 'gympass-auto' });
@@ -227,10 +229,7 @@ export const CheckInTabletView = () => {
                         }
                       } catch (err) {
                         toast.error("Erro ao validar Gympass.", { id: 'gympass-auto' });
-                        // Fallback: try normal check-in if API fails but face recognized? 
-                        // Better to show error since Gympass requires the API confirmation.
                       } finally {
-                        setIsCheckingIn(false);
                         stopFacialRecognition();
                       }
                     } else {
@@ -287,28 +286,6 @@ export const CheckInTabletView = () => {
         console.log('Camera track stopped');
       });
       videoRef.current.srcObject = null;
-    }
-  };
-
-  const getTodayPortuguese = () => {
-    try {
-      const dayName = format(new Date(), 'EEEE', { locale: ptBR });
-      const today = dayName.split('-')[0].charAt(0).toUpperCase() + dayName.split('-')[0].slice(1);
-      console.log("Today is (locale):", today);
-      return today;
-    } catch (e) {
-      const daysMap: { [key: string]: string } = {
-        '0': 'Domingo',
-        '1': 'Segunda',
-        '2': 'Terça',
-        '3': 'Quarta',
-        '4': 'Quinta',
-        '5': 'Sexta',
-        '6': 'Sábado'
-      };
-      const today = daysMap[new Date().getDay().toString()];
-      console.log("Today is (fallback):", today);
-      return today;
     }
   };
 
@@ -413,29 +390,17 @@ export const CheckInTabletView = () => {
 
     setIsValidatingGympass(true);
     try {
-      const response = await fetch('/api/gympass/validate-token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: gympassToken })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Erro ao validar token Wellhub.");
-      }
+      const data = await validateGympassToken(gympassToken);
 
       if (data.valid) {
-        // Find local student by gympassId
         const localStudent = students.find(s => s.gympassId === data.student.id);
-        
         if (localStudent) {
           toast.success(`Aluno identificado: ${localStudent.name}`);
-          handleCheckIn(localStudent, undefined, true); // Direct check-in after validation
+          handleCheckIn(localStudent, undefined, true);
         } else {
           setStatus({ 
             type: 'error', 
-            message: `Gympass ID (${data.student.id}) não vinculado a nenhum aluno local. Vincule no cadastro de alunos.` 
+            message: `Gympass ID (${data.student.id}) não vinculado a nenhum aluno local.` 
           });
           toast.error("ID Gympass não vinculado.");
         }
@@ -443,7 +408,6 @@ export const CheckInTabletView = () => {
         setStatus({ type: 'error', message: data.message || "Token Wellhub inválido ou expirado." });
       }
     } catch (error: any) {
-      console.error("Gympass validation error:", error);
       setStatus({ type: 'error', message: error.message });
       toast.error(error.message);
     } finally {
@@ -456,36 +420,8 @@ export const CheckInTabletView = () => {
     const studentToProcess = student || pendingStudent;
     if (!studentToProcess) return;
 
-    // 1. If no class list provided, try to find current active classes or open selection modal
     if (!targetClasses) {
-      const now = new Date();
-      const todayPortuguese = getTodayPortuguese();
-
-      // Find all overlapping classes (buffer of 30min before, available until end)
-      const overlappingClasses = classes.filter((cls: any) => {
-        if (cls.dayOfWeek !== todayPortuguese && !(cls.daysOfWeek && cls.daysOfWeek.includes(todayPortuguese))) return false;
-        
-        let start: Date;
-        let end: Date;
-
-        if (typeof cls.startTime === 'string' && typeof cls.endTime === 'string') {
-          const [startH, startM] = cls.startTime.split(':').map(Number);
-          const [endH, endM] = cls.endTime.split(':').map(Number);
-          start = new Date(now);
-          start.setHours(startH, startM, 0, 0);
-          end = new Date(now);
-          end.setHours(endH, endM, 0, 0);
-        } else if (cls.startTime && cls.endTime) {
-          start = cls.startTime.toDate ? cls.startTime.toDate() : new Date(cls.startTime);
-          end = cls.endTime.toDate ? cls.endTime.toDate() : new Date(cls.endTime);
-        } else {
-          return false;
-        }
-
-        const bufferStart = subMinutes(start, cls.checkInOffset || 30);
-        const bufferEnd = end;
-        return isWithinInterval(now, { start: bufferStart, end: bufferEnd });
-      });
+      const overlappingClasses = findOverlappingClasses(studentToProcess);
 
       if (overlappingClasses.length === 0) {
         setStatus({ type: 'error', message: "O check-in ainda não abriu para a próxima aula." });
@@ -497,82 +433,26 @@ export const CheckInTabletView = () => {
       if (overlappingClasses.length === 1) {
         targetClasses = [overlappingClasses[0]];
       } else {
-        // More than one class overlapping, ask to choose (possibly multiple)
         setPendingStudent(studentToProcess);
-        setSelectedClassIds([]); // Reset selection
+        setSelectedClassIds([]);
         setIsClassModalOpen(true);
         return;
       }
     }
 
-    setIsCheckingIn(true);
     try {
-      let successCount = 0;
-      let alreadyPresentCount = 0;
+      const result = await processCheckIn(studentToProcess, targetClasses, fromGympass);
 
-      for (const targetClass of targetClasses) {
-        // Validation: Category Compatibility
-        const classCategories = targetClass.categories || [];
-        if (classCategories.length > 0 && studentToProcess.category) {
-          if (!classCategories.includes(studentToProcess.category)) {
-            continue; // Skip incompatible for multi-selection
-          }
-        }
-
-        // Validation: Modality Compatibility
-        const studentModalities = studentToProcess.modalities || ['Jiu-Jitsu'];
-        const classModality = targetClass.modality || 'Jiu-Jitsu';
-        if (!studentModalities.includes(classModality)) {
-          continue; // Skip incompatible modality
-        }
-
-        // Perform Check-in using Service/Hook
-        const currentPresence = targetClass.presence || [];
-        if (currentPresence.includes(studentToProcess.id)) {
-          alreadyPresentCount++;
-        } else {
-          await registerCheckIn({
-            studentId: studentToProcess.id,
-            studentName: studentToProcess.name,
-            classId: targetClass.id,
-            className: targetClass.name || targetClass.title || 'Aula',
-            modality: targetClass.modality || 'Jiu-Jitsu',
-            source: 'tablet',
-            isGympass: fromGympass
-          }, targetClass);
-
-          // If from Gympass, notify their API
-          if (fromGympass && studentToProcess.gympassId) {
-            try {
-              await fetch('/api/gympass/checkin', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                  gympassId: studentToProcess.gympassId,
-                  classId: targetClass.id
-                })
-              });
-            } catch (err) {
-              console.error("Failed to notify Gympass about check-in:", err);
-            }
-          }
-
-          successCount++;
-        }
-      }
-
-      if (successCount > 0) {
-        setStatus({ type: 'success', message: `${successCount} check-ins realizados: ${studentToProcess.name}` });
-      } else if (alreadyPresentCount > 0) {
+      if (result.successCount > 0) {
+        setStatus({ type: 'success', message: `${result.successCount} check-ins realizados: ${studentToProcess.name}` });
+      } else if (result.alreadyPresentCount > 0) {
         setStatus({ type: 'success', message: `Check-in já realizado para ${studentToProcess.name}` });
       } else {
         setStatus({ type: 'error', message: "Nenhuma aula compatível selecionada." });
       }
     } catch (error) {
-      console.error("Check-in error:", error);
       toast.error("Erro ao realizar check-in.");
     } finally {
-      setIsCheckingIn(false);
       setSearchTerm("");
       setMode('selection');
       setPendingStudent(null);

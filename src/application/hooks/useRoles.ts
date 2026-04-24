@@ -1,41 +1,49 @@
-import { useState, useEffect } from 'react';
-import { db } from '../../firebase';
+import { useState, useEffect, useMemo } from 'react';
 import { FirestoreRoleRepository } from '../../infrastructure/firebase/repositories/FirestoreRoleRepository';
 import { Role } from '../../core/entities/Role';
-
-const roleRepository = new FirestoreRoleRepository(db);
+import { useAuth } from '../../contexts/AuthContext';
 
 export const useRoles = (subscribe: boolean = true) => {
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
+  const { tenantDb } = useAuth();
+
+  const repository = useMemo(() => {
+    return tenantDb ? new FirestoreRoleRepository(tenantDb) : null;
+  }, [tenantDb]);
 
   useEffect(() => {
+    if (!repository) return;
+
     if (!subscribe) {
-      roleRepository.getAllRoles().then(data => {
+      repository.getAllRoles().then(data => {
         setRoles(data);
         setLoading(false);
       });
       return;
     }
 
-    const unsubscribe = roleRepository.subscribeRoles((data) => {
+    const unsubscribe = repository.subscribeRoles((data) => {
       setRoles(data);
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [subscribe]);
+  }, [repository, subscribe]);
 
   const addRole = async (data: Omit<Role, 'id'>) => {
-    return await roleRepository.addRole(data);
+    if (!repository) throw new Error("Repository not initialized");
+    return await repository.addRole(data);
   };
 
   const updateRole = async (id: string, data: Partial<Role>) => {
-    await roleRepository.updateRole(id, data);
+    if (!repository) throw new Error("Repository not initialized");
+    await repository.updateRole(id, data);
   };
 
   const deleteRole = async (id: string) => {
-    await roleRepository.deleteRole(id);
+    if (!repository) throw new Error("Repository not initialized");
+    await repository.deleteRole(id);
   };
 
   return { roles, loading, addRole, updateRole, deleteRole };

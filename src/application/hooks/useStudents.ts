@@ -84,12 +84,55 @@ export function useStudents(enabled: boolean, isAdmin?: boolean, userEmail?: str
     await evalRepository.delete(id);
   };
 
+  const graduateStudent = async (studentId: string, graduationData: Partial<Graduation>) => {
+    if (!repository || !gradRepository) throw new Error("Repositories not initialized");
+    try {
+      await gradRepository.save({
+        ...graduationData,
+        studentId,
+        date: graduationData.date || new Date().toISOString()
+      });
+
+      await repository.save({
+        id: studentId,
+        belt: graduationData.belt,
+        stripes: graduationData.stripes
+      });
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const registerStudent = async (formData: any) => {
+    if (!repository) throw new Error("Repository not initialized");
+    try {
+      const initialPaymentDate = formData.startDate ? new Date(formData.startDate) : new Date();
+      const nextPaymentDate = new Date(initialPaymentDate);
+      nextPaymentDate.setMonth(initialPaymentDate.getMonth() + 1);
+
+      const studentData = {
+        ...formData,
+        lastPaymentDate: initialPaymentDate,
+        nextPaymentDate: nextPaymentDate,
+        status: formData.status || 'Active',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      return await repository.save(studentData);
+    } catch (error) {
+      throw error;
+    }
+  };
+
   return { 
     students, 
     loading, 
     addStudent, 
+    registerStudent,
     updateStudent, 
     deleteStudent,
+    graduateStudent,
     addGraduation,
     deleteGraduation,
     addEvaluation,

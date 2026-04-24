@@ -24,10 +24,10 @@ export class FirestoreStudentRepository extends BaseFirestoreRepository<Student>
   }
 
   async getAllStudents(filters?: StudentFilters): Promise<Student[]> {
-    return super.getAll(...this.buildConstraints(filters));
+    return this.getWithConstraints(...this.buildConstraints(filters));
   }
 
   subscribeStudents(callback: (students: Student[]) => void, filters?: StudentFilters): () => void {
-    return super.subscribe(callback, ...this.buildConstraints(filters));
+    return this.subscribeWithConstraints(callback, ...this.buildConstraints(filters));
   }
 }

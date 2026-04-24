@@ -24,7 +24,9 @@ export const ClassesView = () => {
     updateClass, 
     updateBulkClasses, 
     deleteClass, 
-    deleteBulkClasses 
+    deleteBulkClasses,
+    saveClass,
+    deleteClassByScope
   } = useClasses();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -94,105 +96,39 @@ export const ClassesView = () => {
 
   const performSave = async (dataToSave: any, scope: 'single' | 'all' = 'single') => {
     try {
-      if (editingClass) {
-      if (scope === 'all' && editingClass.recurrenceId) {
-        const relatedClasses = classes.filter(c => c.recurrenceId === editingClass.recurrenceId);
-        const updates = relatedClasses.map(cls => ({
-          id: cls.id,
-          data: dataToSave
-        }));
-        await updateBulkClasses(updates);
-        toast.success("Todas as aulas recorrentes foram atualizadas!");
-      } else {
-        await updateClass(editingClass.id, dataToSave);
-        toast.success("Aula atualizada!");
-      }
-    } else {
-      const recurrenceId = Math.random().toString(36).substring(7);
-      const today = startOfDay(new Date());
-      
-      const dayToNumber: { [key: string]: number } = {
-        'Domingo': 0, 'Segunda': 1, 'Terça': 2, 'Quarta': 3, 'Quinta': 4, 'Sexta': 5, 'Sábado': 6
-      };
-
-      const classesToCreate: any[] = [];
-
-      for (const dayName of formData.daysOfWeek) {
-        const targetDay = dayToNumber[dayName];
-        const currentDay = today.getDay();
-        let daysUntilFirst = targetDay - currentDay;
-        const firstOccurrence = addDays(today, daysUntilFirst);
-
-        const classData = {
-          ...dataToSave,
-          dayOfWeek: dayName,
-          recurrenceId
-        };
-
-        if (formData.isRecurring) {
-          for (let i = 0; i < (formData.recurrenceWeeks || 4); i++) {
-            const instanceDate = addDays(firstOccurrence, i * 7);
-            classesToCreate.push({
-              ...classData,
-              date: instanceDate,
-              weekOffset: i,
-              instanceId: `${recurrenceId}-${dayName}-${i}`
-            });
-          }
-        } else {
-          classesToCreate.push({
-            ...classData,
-            date: firstOccurrence,
-            instanceId: `${recurrenceId}-${dayName}-0`
-          });
-        }
-      }
-      
-      await addBulkClasses(classesToCreate);
-      toast.success("Aula(s) criada(s)!");
+      await saveClass(dataToSave, editingClass, scope);
+      setIsModalOpen(false);
+      setShowUpdateScopeModal(false);
+      setPendingUpdateData(null);
+      setEditingClass(null);
+    } catch (error) {
+      console.error("Error saving class:", error);
     }
-    setIsModalOpen(false);
-    setShowUpdateScopeModal(false);
-    setPendingUpdateData(null);
-  } catch (error) {
-    console.error("Error saving class:", error);
-    toast.error("Erro ao salvar aula.");
-  }
-};
+  };
 
-const handleBulkDelete = async () => {
-  if (!confirm(`Deseja excluir as ${selectedClasses.length} aulas selecionadas?`)) return;
-  
-  try {
-    await deleteBulkClasses(selectedClasses);
-    setSelectedClasses([]);
-    toast.success("Aulas excluídas com sucesso!");
-  } catch (error) {
-    console.error("Bulk delete error:", error);
-    toast.error("Erro ao excluir aulas.");
-  }
-};
-
-const performDelete = async (scope: 'single' | 'all' = 'single') => {
-  if (!classToDelete) return;
-
-  try {
-    if (scope === 'all' && classToDelete.recurrenceId) {
-      const relatedClasses = classes.filter(c => c.recurrenceId === classToDelete.recurrenceId);
-      const idsToDelete = relatedClasses.map(c => c.id);
-      await deleteBulkClasses(idsToDelete);
-      toast.success("Todas as aulas da série foram excluídas!");
-    } else {
-      await deleteClass(classToDelete.id);
-      toast.success("Aula excluída");
+  const handleBulkDelete = async () => {
+    if (!confirm(`Deseja excluir as ${selectedClasses.length} aulas selecionadas?`)) return;
+    
+    try {
+      await deleteBulkClasses(selectedClasses);
+      setSelectedClasses([]);
+      toast.success("Aulas excluídas com sucesso!");
+    } catch (error) {
+      console.error("Bulk delete error:", error);
+      toast.error("Erro ao excluir aulas.");
     }
-    setShowDeleteScopeModal(false);
-    setClassToDelete(null);
-  } catch (error) {
-    console.error("Delete error:", error);
-    toast.error("Erro ao excluir aula");
-  }
-};
+  };
+
+  const performDelete = async (scope: 'single' | 'all' = 'single') => {
+    if (!classToDelete) return;
+    try {
+      await deleteClassByScope(classToDelete, scope);
+      setShowDeleteScopeModal(false);
+      setClassToDelete(null);
+    } catch (error) {
+      console.error("Delete error:", error);
+    }
+  };
 
   const toggleSelection = (id: string) => {
     setSelectedClasses(prev => 

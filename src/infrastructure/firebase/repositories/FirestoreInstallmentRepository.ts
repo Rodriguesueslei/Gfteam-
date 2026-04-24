@@ -11,7 +11,11 @@ export class FirestoreInstallmentRepository
   }
 
   async findAll(): Promise<IInstallment[]> {
-    return this.getAll();
+    return this.getWithConstraints();
+  }
+
+  subscribe(callback: (data: IInstallment[]) => void): () => void {
+    return this.subscribeWithConstraints(callback);
   }
 
   async update(id: string, installment: Partial<IInstallment>): Promise<void> {

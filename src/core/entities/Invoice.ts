@@ -23,3 +23,11 @@ export interface Invoice {
   createdAt: Timestamp;
   tenantId: string;
 }
+
+export interface InvoiceFilters {
+  studentId?: string;
+  status?: InvoiceStatus;
+  startDate?: Date;
+  endDate?: Date;
+  limit?: number;
+}

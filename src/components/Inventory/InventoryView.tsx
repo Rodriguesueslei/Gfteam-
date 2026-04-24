@@ -12,10 +12,8 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { useAuth } from '../../contexts/AuthContext';
-import { useProducts } from '../../application/hooks/useProducts';
-import { useSales } from '../../application/hooks/useSales';
+import { useInventory } from '../../application/hooks/useInventory';
 import { useStudents } from '../../application/hooks/useStudents';
-import { useInstallments } from '../../application/hooks/useInstallments';
 import { formatCurrency, cn } from '../../utils/formatters';
 import { StatCard } from '../ui/StatCard';
 import { motion, AnimatePresence } from 'motion/react';
@@ -23,10 +21,15 @@ import toast from 'react-hot-toast';
 
 export const InventoryView = () => {
   const { isAdmin, permissions, user } = useAuth();
-  const { products, addProduct, updateProduct } = useProducts(isAdmin || permissions.inventory);
-  const { sales, addSale } = useSales(isAdmin || permissions.inventory);
-  const { students } = useStudents(true, isAdmin || permissions.students, (isAdmin || permissions.students) ? undefined : user?.email);
-  const { addInstallment } = useInstallments(isAdmin || permissions.finance);
+  const { 
+    products, 
+    sales, 
+    addProduct, 
+    updateProduct, 
+    processSale 
+  } = useInventory();
+  
+  const { students } = useStudents(true, isAdmin || permissions?.students, (isAdmin || permissions?.students) ? undefined : user?.email);
 
   const [activeSubTab, setActiveSubTab] = useState('products');
   const [searchTerm, setSearchTerm] = useState('');
@@ -56,65 +59,13 @@ export const InventoryView = () => {
   const handleSaleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const product = products.find(p => p.id === saleFormData.productId);
-      if (!product) return;
-      if (product.stock <= 0) {
-        toast.error("Produto sem estoque!");
-        return;
-      }
-
-      const student = students.find(s => s.id === saleFormData.studentId);
-      const saleId = Math.random().toString(36).substring(7);
-
-      // 1. Record sale
-      await addSale({
-        studentId: saleFormData.studentId || 'Avulso',
-        studentName: student?.name || 'Venda Avulsa',
-        items: [{
-          productId: product.id!,
-          productName: product.name,
-          quantity: 1,
-          price: saleFormData.amount
-        }],
-        totalAmount: saleFormData.amount,
-        paymentMethod: saleFormData.method,
-        date: new Date(saleFormData.date),
-        status: 'completed'
+      await processSale({
+        ...saleFormData,
+        studentId: saleFormData.studentId || null
       });
-
-      // 2. Generate installments if applicable
-      if (saleFormData.installments > 1 && saleFormData.method === 'Parcelado Academia') {
-        const installmentAmount = saleFormData.amount / saleFormData.installments;
-        const startDate = new Date(saleFormData.firstPaymentDate + 'T12:00:00');
-
-        for (let i = 0; i < saleFormData.installments; i++) {
-          const dueDate = new Date(startDate);
-          dueDate.setMonth(dueDate.getMonth() + i);
-
-          await addInstallment({
-            saleId,
-            studentId: saleFormData.studentId || null,
-            studentName: student?.name || 'Venda Avulsa',
-            productName: product.name,
-            amount: installmentAmount,
-            installmentNumber: i + 1,
-            totalInstallments: saleFormData.installments,
-            dueDate: dueDate,
-            status: 'pending',
-            paymentMethod: saleFormData.method
-          });
-        }
-      }
-
-      // 3. Update stock
-      await updateProduct(product.id!, {
-        stock: product.stock - 1
-      });
-
-      toast.success("Venda realizada!");
       setIsSaleModalOpen(false);
-    } catch (err) {
-      toast.error("Erro ao processar venda.");
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao processar venda.");
     }
   };
 

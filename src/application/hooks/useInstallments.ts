@@ -1,17 +1,20 @@
 import { useState, useEffect, useMemo } from 'react';
-import { db } from '../../firebase';
 import { FirestoreInstallmentRepository } from '../../infrastructure/firebase/repositories/FirestoreInstallmentRepository';
 import { IInstallment } from '../ports/IInstallmentRepository';
+import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 export const useInstallments = (enabled: boolean = true) => {
   const [installments, setInstallments] = useState<IInstallment[]>([]);
   const [loading, setLoading] = useState(true);
+  const { tenantDb } = useAuth();
 
-  const repository = useMemo(() => new FirestoreInstallmentRepository(db), []);
+  const repository = useMemo(() => {
+    return tenantDb ? new FirestoreInstallmentRepository(tenantDb) : null;
+  }, [tenantDb]);
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || !repository) {
       setLoading(false);
       return;
     }
@@ -24,6 +27,7 @@ export const useInstallments = (enabled: boolean = true) => {
   }, [repository, enabled]);
 
   const updateInstallment = async (id: string, data: Partial<IInstallment>) => {
+    if (!repository) throw new Error("Repository not initialized");
     try {
       await repository.update(id, data);
     } catch (error) {
@@ -33,6 +37,7 @@ export const useInstallments = (enabled: boolean = true) => {
   };
 
   const addInstallment = async (data: Omit<IInstallment, 'id'>) => {
+    if (!repository) throw new Error("Repository not initialized");
     try {
       return await repository.save(data as any);
     } catch (error) {
@@ -42,6 +47,7 @@ export const useInstallments = (enabled: boolean = true) => {
   };
 
   const deleteInstallment = async (id: string) => {
+    if (!repository) throw new Error("Repository not initialized");
     try {
       await repository.delete(id);
     } catch (error) {

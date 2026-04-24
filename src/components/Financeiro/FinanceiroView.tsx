@@ -30,7 +30,7 @@ import {
 } from 'recharts';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../../contexts/AuthContext';
-import { usePayments } from '../../application/hooks/usePayments';
+import { useFinance } from '../../application/hooks/useFinance';
 import { useExpenses } from '../../application/hooks/useExpenses';
 import { useInstallments } from '../../application/hooks/useInstallments';
 import { useSubscriptions } from '../../application/hooks/useSubscriptions';
@@ -55,11 +55,11 @@ export const FinanceiroView = ({
   
   const { 
     payments, 
-    processPayment, 
-    processMensalidade, 
+    registerPayment, 
+    receiveInstallment, 
     updatePayment, 
     deletePayment 
-  } = usePayments(true, isAdmin || permissions.finance);
+  } = useFinance();
   
   const { 
     expenses, 
@@ -69,8 +69,7 @@ export const FinanceiroView = ({
   } = useExpenses(isAdmin || permissions.finance);
   
   const { 
-    installments, 
-    updateInstallment 
+    installments
   } = useInstallments(isAdmin || permissions.finance);
   
   const { subscriptions } = useSubscriptions(isAdmin || permissions.finance);
@@ -168,55 +167,21 @@ export const FinanceiroView = ({
         await updatePayment(editingPayment.id, data);
         toast.success("Pagamento atualizado!");
       } else {
-        await processPayment(data);
-        
-        const student = students.find((s: any) => s.id === formData.studentId);
-        const plan = plans.find((p: any) => p.id === student?.planId);
-        const duration = plan?.durationMonths || 1;
-
-        if (formData.studentId) {
-          const nextPaymentDate = new Date(formData.date);
-          nextPaymentDate.setMonth(nextPaymentDate.getMonth() + duration);
-          
-          await updateStudent(formData.studentId, {
-            lastPaymentDate: new Date(formData.date),
-            nextPaymentDate: nextPaymentDate
-          });
-        }
-        toast.success("Pagamento registrado com sucesso!");
+        await registerPayment(data);
       }
 
       setIsModalOpen(false);
       setEditingPayment(null);
     } catch (error) {
       console.error("Error processing payment:", error);
-      toast.error("Erro ao processar pagamento.");
     }
   };
 
   const handleReceiveInstallment = async (installment: any) => {
     try {
-      // 1. Update installment status
-      await updateInstallment(installment.id, {
-        status: 'paid',
-        paidAt: new Date()
-      });
-
-      // 2. Record as a payment in cash flow
-      await processPayment({
-        studentId: installment.studentId,
-        amount: installment.amount,
-        method: 'Pix', // Default or ask user
-        period: format(new Date(), 'MMMM yyyy'),
-        date: new Date(),
-        type: 'installment',
-        saleId: installment.saleId,
-        description: `Parcela ${installment.installmentNumber}/${installment.totalInstallments} - ${installment.productName}`
-      } as any);
-
-      toast.success("Parcela recebida com sucesso!");
+      await receiveInstallment(installment);
     } catch (err) {
-      toast.error("Erro ao receber parcela.");
+      console.error(err);
     }
   };
 

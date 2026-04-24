@@ -21,21 +21,22 @@ import {
   Info
 } from 'lucide-react';
 import { format } from 'date-fns';
-import { initializeApp, getApps } from 'firebase/app';
-import { getAuth, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import firebaseConfig from '../../../firebase-applet-config.json';
-import { collection, doc, setDoc, updateDoc, deleteDoc, Timestamp, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatCurrency, cn } from '../../utils/formatters';
 import toast from 'react-hot-toast';
+import { useLicenses } from '../../application/hooks/useLicenses';
+import { authService } from '../../application/services/AuthService';
 
-interface SuperAdminViewProps {
-  licenses: any[];
-}
-
-export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
+export const SuperAdminView = () => {
   const { sendResetEmail } = useAuth();
+  const { 
+    licenses, 
+    saveLicense, 
+    deleteLicense, 
+    updateLicenseStatus, 
+    updateFirebaseConfig 
+  } = useLicenses();
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedLicense, setSelectedLicense] = useState<any>(null);
@@ -61,12 +62,10 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
   const confirmDelete = async () => {
     if (!deleteConfirmId) return;
     try {
-      await deleteDoc(doc(db, 'licenses', deleteConfirmId));
-      toast.success("Licença excluída.");
+      await deleteLicense(deleteConfirmId);
       setDeleteConfirmId(null);
     } catch (err) {
       console.error("Delete error:", err);
-      toast.error("Erro ao excluir licença. Verifique suas permissões.");
     }
   };
 
@@ -83,14 +82,8 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
       
       // If a password is provided (required for create, optional for edit)
       if (formData.ownerPassword) {
-        // 1. Create User in Firebase Auth using a skeleton app to avoid logging out SuperAdmin
-        const tempAppName = `temp-reg-${Date.now()}`;
-        const tempApp = initializeApp(firebaseConfig, tempAppName);
-        const tempAuth = getAuth(tempApp);
-
         try {
-          await createUserWithEmailAndPassword(tempAuth, email, formData.ownerPassword);
-          await signOut(tempAuth);
+          await authService.createUserWithoutLogout(email, formData.ownerPassword);
         } catch (authErr: any) {
           if (authErr.code === 'auth/email-already-in-use') {
             toast.error("Nota: Este e-mail já possui uma conta no sistema. A senha definida aqui NÃO foi aplicada. Use a opção de recuperar senha ou 'Enviar Redefinição' na tabela.", { duration: 8000 });
@@ -112,32 +105,22 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
         .replace(/-+/g, '-')
         .replace(/^-|-$/g, '');
 
-      const data: any = {
+      const licenseData: any = {
         academyName: formData.academyName,
         ownerName: formData.ownerName,
         ownerEmail: email,
         slug: slug,
         plan: formData.plan,
         status: isEditing ? (licenses.find(l => l.id === editingLicenseId)?.status || 'active') : 'active',
-        updatedAt: serverTimestamp(),
-        expiresAt: Timestamp.fromDate(new Date(formData.expiresAt))
+        expiresAt: new Date(formData.expiresAt)
       };
 
       if (!isEditing) {
-        data.createdAt = serverTimestamp();
+        licenseData.createdAt = new Date(); // Hook will handle serverTimestamp if we want, or we pass Date
       }
 
       const licenseId = isEditing && editingLicenseId ? editingLicenseId : email;
-      await setDoc(doc(db, 'licenses', licenseId), data, { merge: true });
-      
-      // Update/Create record in master DB
-      await setDoc(doc(db, 'users', licenseId), {
-        name: formData.ownerName,
-        email: email,
-        role: 'admin',
-        approved: true,
-        updatedAt: serverTimestamp()
-      }, { merge: true });
+      await saveLicense(licenseId, licenseData);
 
       toast.success(isEditing ? "Academia atualizada!" : "Academia cadastrada com sucesso!", { id: loadingToast });
       setIsModalOpen(false);
@@ -176,10 +159,10 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
   const toggleLicenseStatus = async (license: any) => {
     try {
       const newStatus = license.status === 'active' ? 'blocked' : 'active';
-      await updateDoc(doc(db, 'licenses', license.id), { status: newStatus });
+      await updateLicenseStatus(license.id, newStatus);
       toast.success(`Licença ${newStatus === 'active' ? 'ativada' : 'bloqueada'}!`);
     } catch (err) {
-      toast.error("Erro ao atualizar status.");
+      // toast.error handled in hook
     }
   };
 
@@ -213,14 +196,11 @@ export const SuperAdminView = ({ licenses = [] }: SuperAdminViewProps) => {
     if (!editingLicense) return;
 
     try {
-      await updateDoc(doc(db, 'licenses', editingLicense.id), {
-        externalFirebaseConfig: configFormData
-      });
+      await updateFirebaseConfig(editingLicense.id, configFormData);
       toast.success("Configuração de banco de dados atualizada!");
       setIsConfigModalOpen(false);
     } catch (err) {
-      console.error(err);
-      toast.error("Erro ao salvar configuração.");
+      // toast.error handled in hook
     }
   };
 

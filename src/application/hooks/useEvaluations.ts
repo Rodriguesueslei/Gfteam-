@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Evaluation } from '../../core/entities/Evaluation';
 import { FirestoreEvaluationRepository } from '../../infrastructure/firebase/repositories/FirestoreEvaluationRepository';
 import { useAuth } from '../../contexts/AuthContext';
+import { where, QueryConstraint } from 'firebase/firestore';
 
-export function useEvaluations(enabled: boolean, isAdmin?: boolean, userEmail?: string) {
-  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
+export const useEvaluations = (enabled: boolean = true, isAdmin?: boolean, studentIds?: string[]) => {
+  const [evaluations, setEvaluations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { tenantDb } = useAuth();
 
@@ -18,22 +18,25 @@ export function useEvaluations(enabled: boolean, isAdmin?: boolean, userEmail?: 
       return;
     }
 
-    const unsubscribe = repository.subscribe((data) => {
-      if (isAdmin) {
-        setEvaluations(data);
-      } else if (userEmail) {
-        // This is a bit inefficient as it filters client-side, 
-        // but for a student portal with limited evals it's okay for now.
-        // Ideally the repository would support filtered subscriptions.
-        setEvaluations(data.filter(e => e.studentEmail === userEmail));
-      } else {
-        setEvaluations([]);
-      }
+    const constraints: QueryConstraint[] = [];
+    if (!isAdmin && Array.isArray(studentIds) && studentIds.length > 0) {
+      constraints.push(where('studentId', 'in', studentIds));
+    } else if (!isAdmin) {
+      setEvaluations([]);
       setLoading(false);
-    });
+      return;
+    }
+
+    const unsubscribe = repository.subscribeWithConstraints((data) => {
+      setEvaluations(data);
+      setLoading(false);
+    }, ...constraints);
 
     return () => unsubscribe();
-  }, [enabled, repository, isAdmin, userEmail]);
+  }, [repository, enabled, isAdmin, JSON.stringify(studentIds)]);
 
-  return { evaluations, loading };
-}
+  return {
+    evaluations,
+    loading
+  };
+};

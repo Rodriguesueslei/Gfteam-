@@ -1,17 +1,20 @@
 import { useState, useEffect, useMemo } from 'react';
-import { db } from '../../firebase';
 import { FirestoreExpenseRepository } from '../../infrastructure/firebase/repositories/FirestoreExpenseRepository';
 import { IExpense } from '../ports/IExpenseRepository';
+import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 export const useExpenses = (enabled: boolean = true) => {
   const [expenses, setExpenses] = useState<IExpense[]>([]);
   const [loading, setLoading] = useState(true);
+  const { tenantDb } = useAuth();
 
-  const repository = useMemo(() => new FirestoreExpenseRepository(db), []);
+  const repository = useMemo(() => {
+    return tenantDb ? new FirestoreExpenseRepository(tenantDb) : null;
+  }, [tenantDb]);
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || !repository) {
       setLoading(false);
       return;
     }
@@ -24,6 +27,7 @@ export const useExpenses = (enabled: boolean = true) => {
   }, [repository, enabled]);
 
   const addExpense = async (data: Omit<IExpense, 'id'>) => {
+    if (!repository) throw new Error("Repository not initialized");
     try {
       return await repository.add(data);
     } catch (error) {
@@ -33,6 +37,7 @@ export const useExpenses = (enabled: boolean = true) => {
   };
 
   const updateExpense = async (id: string, data: Partial<IExpense>) => {
+    if (!repository) throw new Error("Repository not initialized");
     try {
       await repository.update(id, data);
     } catch (error) {
@@ -42,6 +47,7 @@ export const useExpenses = (enabled: boolean = true) => {
   };
 
   const deleteExpense = async (id: string) => {
+    if (!repository) throw new Error("Repository not initialized");
     try {
       await repository.delete(id);
     } catch (error) {

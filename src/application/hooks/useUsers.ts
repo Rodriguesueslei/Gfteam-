@@ -1,41 +1,49 @@
-import { useState, useEffect } from 'react';
-import { db } from '../../firebase';
+import { useState, useEffect, useMemo } from 'react';
 import { FirestoreUserRepository } from '../../infrastructure/firebase/repositories/FirestoreUserRepository';
 import { User, UserFilters } from '../../core/entities/User';
-
-const userRepository = new FirestoreUserRepository(db);
+import { useAuth } from '../../contexts/AuthContext';
 
 export const useUsers = (subscribe: boolean = true, filters?: UserFilters) => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const { tenantDb } = useAuth();
+
+  const repository = useMemo(() => {
+    return tenantDb ? new FirestoreUserRepository(tenantDb) : null;
+  }, [tenantDb]);
 
   useEffect(() => {
+    if (!repository) return;
+
     if (!subscribe) {
-      userRepository.getAllUsers(filters).then(data => {
+      repository.getAllUsers(filters).then(data => {
         setUsers(data);
         setLoading(false);
       });
       return;
     }
 
-    const unsubscribe = userRepository.subscribeUsers((data) => {
+    const unsubscribe = repository.subscribeUsers((data) => {
       setUsers(data);
       setLoading(false);
     }, filters);
 
     return () => unsubscribe();
-  }, [subscribe, JSON.stringify(filters)]);
+  }, [repository, subscribe, JSON.stringify(filters)]);
 
   const updateUser = async (id: string, data: Partial<User>) => {
-    await userRepository.updateUser(id, data);
+    if (!repository) throw new Error("Repository not initialized");
+    await repository.updateUser(id, data);
   };
 
   const deleteUser = async (id: string) => {
-    await userRepository.deleteUser(id);
+    if (!repository) throw new Error("Repository not initialized");
+    await repository.deleteUser(id);
   };
 
   const addUser = async (data: Omit<User, 'id'>) => {
-    return await userRepository.addUser(data);
+    if (!repository) throw new Error("Repository not initialized");
+    return await repository.addUser(data);
   };
 
   return { users, loading, updateUser, deleteUser, addUser };

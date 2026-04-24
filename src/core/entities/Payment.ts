@@ -11,3 +11,11 @@ export interface Payment {
   notes?: string;
   tenantId: string;
 }
+
+export interface PaymentFilters {
+  studentId?: string;
+  studentIds?: string[];
+  startDate?: Date;
+  endDate?: Date;
+  limit?: number;
+}

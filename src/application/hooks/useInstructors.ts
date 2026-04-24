@@ -1,17 +1,20 @@
 import { useState, useEffect, useMemo } from 'react';
-import { db } from '../../firebase';
 import { FirestoreInstructorRepository } from '../../infrastructure/firebase/repositories/FirestoreInstructorRepository';
 import { IInstructor } from '../ports/IInstructorRepository';
+import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 export const useInstructors = (enabled: boolean = true) => {
   const [instructors, setInstructors] = useState<IInstructor[]>([]);
   const [loading, setLoading] = useState(true);
+  const { tenantDb } = useAuth();
 
-  const repository = useMemo(() => new FirestoreInstructorRepository(db), []);
+  const repository = useMemo(() => {
+    return tenantDb ? new FirestoreInstructorRepository(tenantDb) : null;
+  }, [tenantDb]);
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || !repository) {
       setLoading(false);
       return;
     }
@@ -24,6 +27,7 @@ export const useInstructors = (enabled: boolean = true) => {
   }, [repository, enabled]);
 
   const addInstructor = async (data: Omit<IInstructor, 'id'>) => {
+    if (!repository) throw new Error("Repository not initialized");
     try {
       await repository.add(data);
       toast.success("Professor cadastrado com sucesso!");
@@ -34,6 +38,7 @@ export const useInstructors = (enabled: boolean = true) => {
   };
 
   const updateInstructor = async (id: string, data: Partial<IInstructor>) => {
+    if (!repository) throw new Error("Repository not initialized");
     try {
       await repository.update(id, data);
       toast.success("Professor atualizado com sucesso!");
@@ -44,6 +49,7 @@ export const useInstructors = (enabled: boolean = true) => {
   };
 
   const deleteInstructor = async (id: string) => {
+    if (!repository) throw new Error("Repository not initialized");
     try {
       if (window.confirm("Deseja realmente excluir este professor?")) {
         await repository.delete(id);

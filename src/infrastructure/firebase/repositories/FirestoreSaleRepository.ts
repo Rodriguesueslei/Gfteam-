@@ -11,7 +11,11 @@ export class FirestoreSaleRepository
   }
 
   async findAll(): Promise<ISale[]> {
-    return this.getAll();
+    return this.getWithConstraints();
+  }
+
+  subscribe(callback: (data: ISale[]) => void): () => void {
+    return this.subscribeWithConstraints(callback);
   }
 
   async add(sale: Omit<ISale, 'id'>): Promise<string> {

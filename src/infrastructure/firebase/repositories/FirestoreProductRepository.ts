@@ -11,7 +11,11 @@ export class FirestoreProductRepository
   }
 
   async findAll(): Promise<IProduct[]> {
-    return this.getAll();
+    return this.getWithConstraints();
+  }
+
+  subscribe(callback: (data: IProduct[]) => void): () => void {
+    return this.subscribeWithConstraints(callback);
   }
 
   async add(product: Omit<IProduct, 'id'>): Promise<string> {

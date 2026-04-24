@@ -18,8 +18,6 @@ import {
   ShieldCheck,
   Link
 } from 'lucide-react';
-import { collection, doc, addDoc, updateDoc, deleteDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { cn } from '../../utils/formatters';
 import { Logo } from '../ui/Logo';
@@ -27,12 +25,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
+import { useBelts } from '../../application/hooks/useBelts';
+import { useSettings } from '../../application/hooks/useSettings';
+import { useBackups } from '../../application/hooks/useBackups';
 
 interface SettingsViewProps {
-  belts: any[];
-  settings: any;
-  secrets?: any;
-  backups?: any[];
   allData?: {
     students: any[];
     payments: any[];
@@ -46,10 +43,14 @@ interface SettingsViewProps {
   };
 }
 
-export const SettingsView = ({ belts, settings, secrets, allData, backups = [] }: SettingsViewProps) => {
+export const SettingsView = ({ allData }: SettingsViewProps) => {
   const [activeSubTab, setActiveSubTab] = useState('belts');
-  const [isGeneratingBackup, setIsGeneratingBackup] = useState(false);
+  const [isGeneratingBackupLocal, setIsGeneratingBackupLocal] = useState(false);
   
+  const { belts, saveBelt, deleteBelt } = useBelts();
+  const { settings, secrets, updateSettings, updateSecrets } = useSettings();
+  const { backups, saveBackup } = useBackups();
+
   // Belts State
   const [isBeltModalOpen, setIsBeltModalOpen] = useState(false);
   const [beltForm, setBeltForm] = useState({ 
@@ -112,10 +113,9 @@ export const SettingsView = ({ belts, settings, secrets, allData, backups = [] }
     reader.onloadend = async () => {
       const base64String = reader.result as string;
       try {
-        await setDoc(doc(db, 'settings', 'global'), {
+        await updateSettings({
           logoUrl: base64String,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
+        });
         setLogoPreview(base64String);
         toast.success("Logo atualizada com sucesso!");
       } catch (error) {
@@ -131,16 +131,10 @@ export const SettingsView = ({ belts, settings, secrets, allData, backups = [] }
   const handleSaveBelt = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      if (editingBelt) {
-        await updateDoc(doc(db, 'belts', editingBelt.id), beltForm);
-        toast.success("Faixa atualizada!");
-      } else {
-        await addDoc(collection(db, 'belts'), beltForm);
-        toast.success("Faixa criada!");
-      }
+      await saveBelt(editingBelt?.id || null, beltForm);
       setIsBeltModalOpen(false);
     } catch (error) {
-      toast.error("Erro ao salvar faixa.");
+      // toast.error is handled in the hook
     }
   };
 
@@ -152,19 +146,17 @@ export const SettingsView = ({ belts, settings, secrets, allData, backups = [] }
       const publicData = {
         stripePublicKey: paymentForm.stripePublicKey,
         mercadoPagoPublicKey: paymentForm.mercadoPagoPublicKey,
-        paymentProvider: paymentForm.paymentProvider,
-        updatedAt: serverTimestamp()
+        paymentProvider: paymentForm.paymentProvider as any,
       };
       
       const privateData = {
         stripeSecretKey: paymentForm.stripeSecretKey,
         mercadoPagoAccessToken: paymentForm.mercadoPagoAccessToken,
-        updatedAt: serverTimestamp()
       };
 
       await Promise.all([
-        setDoc(doc(db, 'settings', 'global'), publicData, { merge: true }),
-        setDoc(doc(db, 'secret_settings', 'global'), privateData, { merge: true })
+        updateSettings(publicData),
+        updateSecrets(privateData)
       ]);
 
       toast.success("Configurações de pagamento atualizadas!");
@@ -183,10 +175,9 @@ export const SettingsView = ({ belts, settings, secrets, allData, backups = [] }
       const privateData = {
         gympassClientId: gympassForm.clientId,
         gympassClientSecret: gympassForm.clientSecret,
-        updatedAt: serverTimestamp()
       };
 
-      await setDoc(doc(db, 'secret_settings', 'global'), privateData, { merge: true });
+      await updateSecrets(privateData);
       toast.success("Configurações do Gympass atualizadas!");
     } catch (error) {
       console.error("Error saving Gympass settings:", error);
@@ -198,16 +189,15 @@ export const SettingsView = ({ belts, settings, secrets, allData, backups = [] }
 
   const handleCloudBackup = async (type: 'Manual' | 'Automatic' = 'Manual') => {
     if (!allData) return;
-    setIsGeneratingBackup(true);
+    setIsGeneratingBackupLocal(true);
     const loadingToast = type === 'Manual' ? toast.loading("Gerando backup na nuvem...") : null;
 
     try {
       const backupData = JSON.stringify(allData);
       const fileName = `OssManager_Backup_${new Date().toISOString().replace(/:/g, '-')}.json`;
       
-      await addDoc(collection(db, 'backups'), {
+      await saveBackup({
         fileName,
-        createdAt: serverTimestamp(),
         size: new Blob([backupData]).size,
         type,
         collections: Object.keys(allData),
@@ -219,7 +209,7 @@ export const SettingsView = ({ belts, settings, secrets, allData, backups = [] }
       console.error("Backup error:", error);
       if (loadingToast) toast.error("Erro ao salvar backup.", { id: loadingToast });
     } finally {
-      setIsGeneratingBackup(false);
+      setIsGeneratingBackupLocal(false);
     }
   };
 
@@ -228,9 +218,9 @@ export const SettingsView = ({ belts, settings, secrets, allData, backups = [] }
     if (activeSubTab === 'data' && backups.length >= 0) {
       const lastAutomatic = backups.find(b => b.type === 'Automatic');
       const shouldBackup = !lastAutomatic || 
-        (new Date().getTime() - lastAutomatic.createdAt?.toDate().getTime() > 24 * 60 * 60 * 1000);
+        (new Date().getTime() - (lastAutomatic.createdAt?.toDate?.() || new Date()).getTime() > 24 * 60 * 60 * 1000);
       
-      if (shouldBackup && !isGeneratingBackup) {
+      if (shouldBackup && !isGeneratingBackupLocal) {
         handleCloudBackup('Automatic');
       }
     }
@@ -602,25 +592,25 @@ export const SettingsView = ({ belts, settings, secrets, allData, backups = [] }
       {activeSubTab === 'data' && (
         <div className="max-w-4xl space-y-6">
           <div className="p-8 bg-white border border-gray-100 rounded-[32px] shadow-sm space-y-8">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-blue-100 rounded-2xl">
-                  <Database className="w-6 h-6 text-blue-600" />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-blue-100 rounded-2xl">
+                    <Database className="w-6 h-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">Gestão de Backups</h2>
+                    <p className="text-sm text-gray-500">Backups automáticos e manuais em nuvem.</p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-900">Gestão de Backups</h2>
-                  <p className="text-sm text-gray-500">Backups automáticos e manuais em nuvem.</p>
-                </div>
+                <button 
+                  onClick={() => handleCloudBackup('Manual')}
+                  disabled={isGeneratingBackupLocal}
+                  className="px-6 py-3 bg-black text-white font-bold rounded-2xl hover:bg-gray-800 transition-all flex items-center gap-2 italic uppercase tracking-tighter text-xs"
+                >
+                  <div className={cn("w-2 h-2 rounded-full bg-emerald-400 animate-pulse", isGeneratingBackupLocal && "bg-gray-400")} />
+                  {isGeneratingBackupLocal ? 'Gerando...' : 'Backup Instantâneo'}
+                </button>
               </div>
-              <button 
-                onClick={() => handleCloudBackup('Manual')}
-                disabled={isGeneratingBackup}
-                className="px-6 py-3 bg-black text-white font-bold rounded-2xl hover:bg-gray-800 transition-all flex items-center gap-2 italic uppercase tracking-tighter text-xs"
-              >
-                <div className={cn("w-2 h-2 rounded-full bg-emerald-400 animate-pulse", isGeneratingBackup && "bg-gray-400")} />
-                {isGeneratingBackup ? 'Gerando...' : 'Backup Instantâneo'}
-              </button>
-            </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <button 

@@ -8,7 +8,11 @@ export class FirestoreEvaluationRepository extends BaseFirestoreRepository<Evalu
     super(db, 'evaluations', 'date');
   }
 
+  async getAll(): Promise<Evaluation[]> {
+    return this.getWithConstraints();
+  }
+
   subscribeByStudentId(studentId: string, callback: (evaluations: Evaluation[]) => void): () => void {
-    return super.subscribe(callback, where('studentId', '==', studentId));
+    return this.subscribeWithConstraints(callback, where('studentId', '==', studentId));
   }
 }

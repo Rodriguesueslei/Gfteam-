@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Graduation } from '../../core/entities/Graduation';
 import { FirestoreGraduationRepository } from '../../infrastructure/firebase/repositories/FirestoreGraduationRepository';
 import { useAuth } from '../../contexts/AuthContext';
+import { where, QueryConstraint } from 'firebase/firestore';
 
-export function useGraduations(enabled: boolean, isAdmin?: boolean, userEmail?: string) {
-  const [graduations, setGraduations] = useState<Graduation[]>([]);
+export const useGraduations = (enabled: boolean = true, isAdmin?: boolean, studentIds?: string[]) => {
+  const [graduations, setGraduations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { tenantDb } = useAuth();
 
@@ -18,19 +18,25 @@ export function useGraduations(enabled: boolean, isAdmin?: boolean, userEmail?: 
       return;
     }
 
-    const unsubscribe = repository.subscribe((data) => {
-      if (isAdmin) {
-        setGraduations(data);
-      } else if (userEmail) {
-        setGraduations(data.filter(g => g.studentEmail === userEmail));
-      } else {
-        setGraduations([]);
-      }
+    const constraints: QueryConstraint[] = [];
+    if (!isAdmin && Array.isArray(studentIds) && studentIds.length > 0) {
+      constraints.push(where('studentId', 'in', studentIds));
+    } else if (!isAdmin) {
+      setGraduations([]);
       setLoading(false);
-    });
+      return;
+    }
+
+    const unsubscribe = repository.subscribeWithConstraints((data) => {
+      setGraduations(data);
+      setLoading(false);
+    }, ...constraints);
 
     return () => unsubscribe();
-  }, [enabled, repository, isAdmin, userEmail]);
+  }, [repository, enabled, isAdmin, JSON.stringify(studentIds)]);
 
-  return { graduations, loading };
-}
+  return {
+    graduations,
+    loading
+  };
+};

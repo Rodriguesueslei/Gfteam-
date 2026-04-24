@@ -24,11 +24,11 @@ export class FirestoreUserRepository extends BaseFirestoreRepository<User> imple
   }
 
   async getAllUsers(filters?: UserFilters): Promise<User[]> {
-    return super.getAll(...this.buildConstraints(filters));
+    return this.getWithConstraints(...this.buildConstraints(filters));
   }
 
   subscribeUsers(callback: (users: User[]) => void, filters?: UserFilters): () => void {
-    return super.subscribe(callback, ...this.buildConstraints(filters));
+    return this.subscribeWithConstraints(callback, ...this.buildConstraints(filters));
   }
 
   async updateUser(id: string, data: Partial<User>): Promise<void> {

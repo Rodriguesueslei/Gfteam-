@@ -14,5 +14,7 @@ export interface CheckIn {
 
 export interface CheckInFilters {
   studentId?: string;
+  studentIds?: string[];
   classId?: string;
+  limit?: number;
 }

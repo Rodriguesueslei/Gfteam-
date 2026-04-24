@@ -21,7 +21,7 @@ export abstract class BaseFirestoreRepository<T extends { id: string }> {
     protected defaultOrderBy: string = 'name'
   ) {}
 
-  async getAll(...constraints: QueryConstraint[]): Promise<T[]> {
+  protected async getWithConstraints(...constraints: QueryConstraint[]): Promise<T[]> {
     try {
       const q = query(collection(this.db, this.collectionName), ...constraints, orderBy(this.defaultOrderBy));
       const snapshot = await getDocs(q);
@@ -66,6 +66,14 @@ export abstract class BaseFirestoreRepository<T extends { id: string }> {
     }
   }
 
+  async create(entity: Omit<T, 'id'> & { id?: string }): Promise<string> {
+    return this.save(entity as Partial<T>);
+  }
+
+  async update(id: string, entity: Partial<T>): Promise<void> {
+    await this.save({ ...entity, id });
+  }
+
   async delete(id: string): Promise<void> {
     try {
       const docRef = doc(this.db, this.collectionName, id);
@@ -76,7 +84,7 @@ export abstract class BaseFirestoreRepository<T extends { id: string }> {
     }
   }
 
-  subscribe(callback: (data: T[]) => void, ...constraints: QueryConstraint[]): () => void {
+  subscribeWithConstraints(callback: (data: T[]) => void, ...constraints: QueryConstraint[]): () => void {
     const q = query(collection(this.db, this.collectionName), ...constraints, orderBy(this.defaultOrderBy));
     return onSnapshot(q, (snapshot) => {
       callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T)));

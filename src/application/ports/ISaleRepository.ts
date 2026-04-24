@@ -21,4 +21,5 @@ export interface ISaleRepository {
   add(sale: Omit<ISale, 'id'>): Promise<string>;
   update(id: string, sale: Partial<ISale>): Promise<void>;
   delete(id: string): Promise<void>;
+  subscribe(callback: (data: ISale[]) => void): () => void;
 }

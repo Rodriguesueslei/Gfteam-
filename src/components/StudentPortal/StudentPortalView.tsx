@@ -29,18 +29,25 @@ import toast from 'react-hot-toast';
 export const StudentPortalView = () => {
   const { user, logout } = useAuth();
   const { settings } = useSettings();
-  const { students } = useStudents(true, false, user?.email || undefined);
-  const { payments } = usePayments(true, false);
-  const { checkIns } = useCheckIn(true, false);
-  const { evaluations } = useEvaluations(true, false, user?.email || undefined);
-  const { graduations } = useGraduations(true, false, user?.email || undefined);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'finance' | 'timeline'>('dashboard');
+
+  // 1. Get ALL students linked to this email
+  const { students } = useStudents(true, false, user?.email);
+  
+  // 2. Find all students linked to this email
+  const linkedStudentIds = useMemo(() => 
+    students.map(s => s.id),
+    [students]
+  );
+
+  // 3. Fetch data ONLY for those linked students
+  const { payments } = usePayments(true, false, linkedStudentIds);
+  const { checkIns } = useCheckIn(true, false, linkedStudentIds);
+  const { evaluations } = useEvaluations(true, false, linkedStudentIds);
+  const { graduations } = useGraduations(true, false, linkedStudentIds);
   const { installments } = useInstallments(false);
 
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'finance' | 'timeline'>('dashboard');
-
-  // Find all students linked to this email
-  const linkedStudents = useMemo(() => students.filter(s => s.email === user?.email), [students, user?.email]);
 
   useEffect(() => {
     // Auto-select if there's only one student and none is selected
@@ -48,6 +55,9 @@ export const StudentPortalView = () => {
       setSelectedStudentId(linkedStudents[0].id);
     }
   }, [linkedStudents, selectedStudentId]);
+
+  // Find all students linked to this email
+  const linkedStudents = useMemo(() => students.filter(s => s.email === user?.email), [students, user?.email]);
 
   const studentData = useMemo(() => {
     return selectedStudentId ? linkedStudents.find(s => s.id === selectedStudentId) : null;

@@ -1,17 +1,20 @@
 import { useState, useEffect, useMemo } from 'react';
-import { db } from '../../firebase';
 import { FirestoreSaleRepository } from '../../infrastructure/firebase/repositories/FirestoreSaleRepository';
 import { ISale } from '../ports/ISaleRepository';
+import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 export const useSales = (enabled: boolean = true) => {
   const [sales, setSales] = useState<ISale[]>([]);
   const [loading, setLoading] = useState(true);
+  const { tenantDb } = useAuth();
 
-  const repository = useMemo(() => new FirestoreSaleRepository(db), []);
+  const repository = useMemo(() => {
+    return tenantDb ? new FirestoreSaleRepository(tenantDb) : null;
+  }, [tenantDb]);
 
   useEffect(() => {
-    if (!enabled) {
+    if (!enabled || !repository) {
       setLoading(false);
       return;
     }
@@ -24,6 +27,7 @@ export const useSales = (enabled: boolean = true) => {
   }, [repository, enabled]);
 
   const addSale = async (data: Omit<ISale, 'id'>) => {
+    if (!repository) throw new Error("Repository not initialized");
     try {
       return await repository.add(data);
     } catch (error) {
@@ -33,6 +37,7 @@ export const useSales = (enabled: boolean = true) => {
   };
 
   const updateSale = async (id: string, data: Partial<ISale>) => {
+    if (!repository) throw new Error("Repository not initialized");
     try {
       await repository.update(id, data);
     } catch (error) {
@@ -42,6 +47,7 @@ export const useSales = (enabled: boolean = true) => {
   };
 
   const deleteSale = async (id: string) => {
+    if (!repository) throw new Error("Repository not initialized");
     try {
       await repository.delete(id);
     } catch (error) {

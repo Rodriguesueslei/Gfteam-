@@ -15,4 +15,5 @@ export interface IProductRepository {
   add(product: Omit<IProduct, 'id'>): Promise<string>;
   update(id: string, product: Partial<IProduct>): Promise<void>;
   delete(id: string): Promise<void>;
+  subscribe(callback: (data: IProduct[]) => void): () => void;
 }

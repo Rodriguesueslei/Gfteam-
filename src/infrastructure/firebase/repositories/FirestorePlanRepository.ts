@@ -11,7 +11,11 @@ export class FirestorePlanRepository
   }
 
   async findAll(): Promise<IPlan[]> {
-    return this.getAll();
+    return this.getWithConstraints();
+  }
+
+  subscribe(callback: (data: IPlan[]) => void): () => void {
+    return this.subscribeWithConstraints(callback);
   }
 
   async add(plan: Omit<IPlan, 'id'>): Promise<string> {

@@ -11,11 +11,11 @@ export class FirestoreRoleRepository extends BaseFirestoreRepository<Role> imple
   }
 
   async getAllRoles(): Promise<Role[]> {
-    return super.getAll();
+    return this.getWithConstraints();
   }
 
   subscribeRoles(callback: (roles: Role[]) => void): () => void {
-    return super.subscribe(callback);
+    return this.subscribeWithConstraints(callback);
   }
 
   async addRole(data: Omit<Role, 'id'>): Promise<string> {

@@ -11,7 +11,11 @@ export class FirestoreExpenseRepository
   }
 
   async findAll(): Promise<IExpense[]> {
-    return this.getAll();
+    return this.getWithConstraints();
+  }
+
+  subscribe(callback: (data: IExpense[]) => void): () => void {
+    return this.subscribeWithConstraints(callback);
   }
 
   async add(expense: Omit<IExpense, 'id'>): Promise<string> {

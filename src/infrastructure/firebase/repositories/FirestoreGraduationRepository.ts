@@ -8,7 +8,11 @@ export class FirestoreGraduationRepository extends BaseFirestoreRepository<Gradu
     super(db, 'graduations', 'date');
   }
 
+  async getAll(): Promise<Graduation[]> {
+    return this.getWithConstraints();
+  }
+
   subscribeByStudentId(studentId: string, callback: (graduations: Graduation[]) => void): () => void {
-    return super.subscribe(callback, where('studentId', '==', studentId));
+    return this.subscribeWithConstraints(callback, where('studentId', '==', studentId));
   }
 }

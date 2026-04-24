@@ -18,4 +18,5 @@ export interface IInstallmentRepository {
   findAll(): Promise<IInstallment[]>;
   update(id: string, installment: Partial<IInstallment>): Promise<void>;
   delete(id: string): Promise<void>;
+  subscribe(callback: (data: IInstallment[]) => void): () => void;
 }

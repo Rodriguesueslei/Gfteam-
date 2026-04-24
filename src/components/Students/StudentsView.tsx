@@ -68,9 +68,9 @@ export const StudentsView = () => {
   const belts = gymInfo?.settings?.belts || [];
   const { 
     students, 
-    addStudent, 
+    registerStudent, 
     updateStudent,
-    addGraduation,
+    graduateStudent,
     addEvaluation,
     deleteEvaluation
   } = useStudents(true, isAdmin || permissions.students, (isAdmin || permissions.students) ? undefined : user?.email);
@@ -181,19 +181,18 @@ export const StudentsView = () => {
   const handleAddStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const { nextPaymentDate, ...rest } = formData;
-      const dataToSave = {
-        ...rest,
-        nextPaymentDate: nextPaymentDate ? new Date(nextPaymentDate) : new Date(),
-        facePhoto: formData.facePhoto || editingStudent?.facePhoto || null,
-        faceDescriptor: formData.faceDescriptor || editingStudent?.faceDescriptor || null
-      };
-
       if (editingStudent) {
+        const { nextPaymentDate, ...rest } = formData;
+        const dataToSave = {
+          ...rest,
+          nextPaymentDate: nextPaymentDate ? new Date(nextPaymentDate) : new Date(),
+          facePhoto: formData.facePhoto || editingStudent?.facePhoto || null,
+          faceDescriptor: formData.faceDescriptor || editingStudent?.faceDescriptor || null
+        };
         await updateStudent(editingStudent.id, dataToSave as any);
         toast.success("Aluno atualizado!");
       } else {
-        await addStudent(dataToSave as any);
+        await registerStudent(formData);
         toast.success("Aluno cadastrado! Verifique as mensalidades.");
       }
       setIsModalOpen(false);
@@ -212,26 +211,17 @@ export const StudentsView = () => {
     if (!selectedStudent) return;
     
     try {
-      // Add record to graduation history
-      await addGraduation({
-        studentId: selectedStudent.id,
+      await graduateStudent(selectedStudent.id, {
         belt: graduationData.belt,
         stripes: graduationData.stripes,
         notes: graduationData.notes,
-        date: new Date(graduationData.date),
+        date: graduationData.date,
         instructorName: user?.displayName || 'Admin'
       });
-
-      // Update student current rank
-      await updateStudent(selectedStudent.id, {
-        belt: graduationData.belt,
-        stripes: graduationData.stripes
-      } as any);
 
       toast.success("Graduação registrada com sucesso!");
       setIsGraduationModalOpen(false);
       
-      // Update local state if needed
       setSelectedStudent({
         ...selectedStudent,
         belt: graduationData.belt,

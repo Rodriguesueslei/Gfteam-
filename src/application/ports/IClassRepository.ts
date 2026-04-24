@@ -30,4 +30,5 @@ export interface IClassRepository {
   updateBulk(updates: { id: string, data: Partial<IClass> }[]): Promise<void>;
   delete(id: string): Promise<void>;
   deleteBulk(ids: string[]): Promise<void>;
+  subscribe(callback: (data: IClass[]) => void): () => void;
 }

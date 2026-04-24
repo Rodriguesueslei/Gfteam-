@@ -11,7 +11,11 @@ export class FirestoreInstructorRepository
   }
 
   async findAll(): Promise<IInstructor[]> {
-    return this.getAll();
+    return this.getWithConstraints();
+  }
+
+  subscribe(callback: (data: IInstructor[]) => void): () => void {
+    return this.subscribeWithConstraints(callback);
   }
 
   async findById(id: string): Promise<IInstructor | null> {

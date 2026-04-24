@@ -62,7 +62,6 @@ interface AuthContextType {
   unlinkGoogle: () => Promise<void>;
   sendResetEmail: (email: string) => Promise<void>;
   updateMyPassword: (newPass: string) => Promise<void>;
-  updateTenantConfig: (config: any) => Promise<void>;
   syncGymStats: (stats: { studentCount: number }) => Promise<void>;
 }
 
@@ -87,7 +86,6 @@ const AuthContext = createContext<AuthContextType>({
   unlinkGoogle: async () => {},
   sendResetEmail: async () => {},
   updateMyPassword: async () => {},
-  updateTenantConfig: async () => {},
   syncGymStats: async () => {}
 });
 
@@ -448,25 +446,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const updateTenantConfig = async (configData: any) => {
-    if (!user?.email) return;
-    const licenseId = user.email.toLowerCase().trim();
-    // Destructure branding if provided, otherwise keep it null to not overwrite
-    const { branding, ...firebaseConfig } = configData;
-    
-    const updatePayload: any = {
-      externalFirebaseConfig: firebaseConfig,
-      status: 'active',
-      updatedAt: serverTimestamp()
-    };
-
-    if (branding) {
-      updatePayload.branding = branding;
-    }
-
-    await setDoc(doc(masterDb, 'licenses', licenseId), updatePayload, { merge: true });
-  };
-
   const syncGymStats = useCallback(async (stats: { studentCount: number }) => {
     if (!user?.email || isSuperAdmin) return;
     const licenseId = user.email.toLowerCase().trim();
@@ -504,7 +483,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       unlinkGoogle,
       sendResetEmail,
       updateMyPassword,
-      updateTenantConfig,
       syncGymStats
     }}>
       {children}

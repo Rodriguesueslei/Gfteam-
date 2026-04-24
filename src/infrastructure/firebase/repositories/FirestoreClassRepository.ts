@@ -11,7 +11,11 @@ export class FirestoreClassRepository
   }
 
   async findAll(): Promise<IClass[]> {
-    return this.getAll();
+    return this.getWithConstraints();
+  }
+
+  subscribe(callback: (data: IClass[]) => void): () => void {
+    return this.subscribeWithConstraints(callback);
   }
 
   async add(classData: Omit<IClass, 'id'>): Promise<string> {

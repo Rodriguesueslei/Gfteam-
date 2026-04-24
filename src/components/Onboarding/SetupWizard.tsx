@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useLicenses } from '../../application/hooks/useLicenses';
 import { Database, ShieldCheck, Rocket, ChevronRight, AlertCircle, CheckCircle2, Palette, Terminal, Copy, ExternalLink, Info, Sparkles, Wand2, Send, Bot, HelpCircle, Eye, EyeOff, Activity } from 'lucide-react';
 import { cn } from '../../utils/formatters';
 import toast from 'react-hot-toast';
@@ -8,7 +9,8 @@ import { initializeApp, deleteApp } from 'firebase/app';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 
 export const SetupWizard = () => {
-  const { user, updateTenantConfig } = useAuth();
+  const { user } = useAuth();
+  const { saveLicense } = useLicenses();
   const [step, setStep] = useState(1);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -137,9 +139,13 @@ service cloud.firestore {
 
     setLoading(true);
     try {
-      await updateTenantConfig({
-        ...config,
-        branding // Store branding alongside config
+      if (!user?.email) throw new Error("Usuário não logado");
+      const licenseId = user.email.toLowerCase().trim();
+
+      await saveLicense(licenseId, {
+        externalFirebaseConfig: config,
+        branding,
+        status: 'active'
       });
       setStep(4);
     } catch (err) {

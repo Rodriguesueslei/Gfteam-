@@ -1,8 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Payment } from '../../core/entities/Payment';
+import { Payment, PaymentFilters } from '../../core/entities/Payment';
 import { FirestorePaymentRepository } from '../../infrastructure/firebase/repositories/FirestorePaymentRepository';
 import { useAuth } from '../../contexts/AuthContext';
-import { QueryConstraint, limit, where } from 'firebase/firestore';
 import { PaymentService } from '../services/PaymentService';
 import toast from 'react-hot-toast';
 
@@ -27,16 +26,25 @@ export function usePayments(enabled: boolean, isAdmin?: boolean, studentIds?: st
 
     setLoading(true);
     
-    const constraints: QueryConstraint[] = [];
-    if (!isAdmin && studentIds && studentIds.length > 0) {
-      constraints.push(where('studentId', 'in', studentIds));
+    const filters: PaymentFilters = {
+      limit: 100
+    };
+
+    if (isAdmin) {
+      // Fetch all for admin
+    } else if (studentIds && studentIds.length > 0) {
+      filters.studentIds = studentIds;
+    } else {
+      // Not admin and no student IDs - don't fetch anything
+      setPayments([]);
+      setLoading(false);
+      return;
     }
     
-    // BaseFirestoreRepository handles the default 'date' orderBy defined in constructor
     const unsubscribe = repository.subscribe((data) => {
       setPayments(data);
       setLoading(false);
-    }, ...constraints, limit(100));
+    }, filters);
 
     return () => unsubscribe();
   }, [enabled, repository, isAdmin, studentIds]);

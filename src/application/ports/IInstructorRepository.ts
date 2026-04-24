@@ -16,4 +16,5 @@ export interface IInstructorRepository {
   add(instructor: Omit<IInstructor, 'id'>): Promise<string>;
   update(id: string, instructor: Partial<IInstructor>): Promise<void>;
   delete(id: string): Promise<void>;
+  subscribe(callback: (data: IInstructor[]) => void): () => void;
 }

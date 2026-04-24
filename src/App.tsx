@@ -33,16 +33,16 @@ import { usePlans } from './application/hooks/usePlans';
 import { useClasses } from './application/hooks/useClasses';
 import { useProducts } from './application/hooks/useProducts';
 import { useSales } from './application/hooks/useSales';
+import { useBelts } from './application/hooks/useBelts';
+import { useSettings } from './application/hooks/useSettings';
+import { useBackups } from './application/hooks/useBackups';
+import { useLicenses } from './application/hooks/useLicenses';
+import { useUsers } from './application/hooks/useUsers';
+import { useEvaluations } from './application/hooks/useEvaluations';
+import { useGraduations } from './application/hooks/useGraduations';
 import { 
-  useBelts, 
-  useUsers, 
-  useSettings,
   useInstallments as useInstallmentsLegacy,
-  useEvaluations,
-  useGraduations,
-  usePrivateSettings,
-  useBackups,
-  useLicenses
+  usePrivateSettings
 } from './hooks/useFirebaseData';
 import { cn } from './utils/formatters';
 import { Logo } from './components/ui/Logo';
@@ -109,7 +109,7 @@ const AppContent = () => {
   }, [isDarkMode]);
   
   // Data Hooks
-  const belts = useBelts(!!user);
+  const { belts } = useBelts();
   const { students: studentsData, loading: studentsLoading } = useStudents(!!user, isAdmin || permissions.students, user?.email);
   const students = studentsData || [];
   const { classes } = useClasses(!!user);
@@ -117,12 +117,11 @@ const AppContent = () => {
   const { plans } = usePlans(!!user);
   const { products } = useProducts(!!user);
   const { sales } = useSales(!!user);
-  const users = useUsers(isAdmin || permissions.users);
+  const { users } = useUsers(isAdmin || permissions.users);
   const { expenses } = useExpenses(isAdmin || permissions.finance);
-  const settings = useSettings(!!user);
-  const secrets = usePrivateSettings(isAdmin);
-  const backups = useBackups(isAdmin);
-  const licenses = useLicenses(isSuperAdmin);
+  const { settings, secrets } = useSettings();
+  const { backups } = useBackups();
+  const { licenses } = useLicenses();
 
   // Derive linked student IDs for secure data fetching (for parents/students)
   const myStudentIds = React.useMemo(() => {
@@ -143,8 +142,8 @@ const AppContent = () => {
 
   const { checkIns, registerCheckIn } = useCheckIn(!!user, isAdmin || permissions.students, (isAdmin || permissions.students) ? undefined : myStudentIds);
   const { installments } = useInstallments(isAdmin || permissions.finance);
-  const evaluations = useEvaluations(!!user, isAdmin || permissions.students, myStudentIds);
-  const graduations = useGraduations(!!user, isAdmin || permissions.students, myStudentIds);
+  const { evaluations } = useEvaluations(!!user, isAdmin || permissions.students, myStudentIds);
+  const { graduations } = useGraduations(!!user, isAdmin || permissions.students, myStudentIds);
   const { payments, processPayment, processMensalidade } = usePayments(!!user, isAdmin || permissions.finance, myStudentIds);
   const { subscriptions } = useSubscriptions(isAdmin || permissions.finance);
   const { invoices } = useInvoices(isAdmin || permissions.finance);
@@ -490,12 +489,9 @@ const AppContent = () => {
       case 'inventory':
         return <InventoryView />;
       case 'superadmin':
-        return <SuperAdminView licenses={licenses} />;
+        return <SuperAdminView />;
       case 'settings':
         return <SettingsView 
-          belts={belts} 
-          settings={settings} 
-          secrets={secrets}
           allData={{ 
             students, 
             payments, 
@@ -507,7 +503,6 @@ const AppContent = () => {
             plans,
             instructors
           }} 
-          backups={backups}
         />;
       default:
         return <DashboardView onNavigate={setActiveTab} />;

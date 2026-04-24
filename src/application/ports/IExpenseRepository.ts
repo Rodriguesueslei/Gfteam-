@@ -10,6 +10,7 @@ export interface IExpense {
 
 export interface IExpenseRepository {
   findAll(): Promise<IExpense[]>;
+  subscribe(callback: (expenses: IExpense[]) => void): () => void;
   add(expense: Omit<IExpense, 'id'>): Promise<string>;
   update(id: string, expense: Partial<IExpense>): Promise<void>;
   delete(id: string): Promise<void>;

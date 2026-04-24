@@ -13,4 +13,5 @@ export interface IPlanRepository {
   add(plan: Omit<IPlan, 'id'>): Promise<string>;
   update(id: string, plan: Partial<IPlan>): Promise<void>;
   delete(id: string): Promise<void>;
+  subscribe(callback: (data: IPlan[]) => void): () => void;
 }

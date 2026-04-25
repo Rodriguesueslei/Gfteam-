@@ -5,5 +5,5 @@ export interface ILicensesRepository {
   subscribeLicenses(): Observable<any[]>;
   saveLicense(id: string, data: any): Promise<void>;
   deleteLicense(id: string): Promise<void>;
-  updateUserRole(email: string, role: string): Promise<void>;
+  createAdminProfile(email: string, tenantId: string, name?: string): Promise<void>;
 }

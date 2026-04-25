@@ -612,7 +612,7 @@ const AppContent = () => {
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold text-zinc-900 dark:text-white truncate">{user.displayName}</p>
                 <p className="text-[9px] text-zinc-400 font-bold uppercase tracking-wider truncate">
-                  {role === 'admin' ? 'Administrador' : 
+                  {role === 'admin' || role === 'tenant_admin' ? 'Administrador' : 
                    role === 'professor' ? 'Professor' : 
                    role === 'receptionist' ? 'Recepcionista' : 
                    role === 'superadmin' ? 'Super Admin' : 

@@ -28,7 +28,6 @@ export const useLicenses = () => {
   const saveLicense = async (id: string, data: any) => {
     try {
       await repository.saveLicense(id, data);
-      await repository.updateUserRole(data.ownerEmail, 'admin');
     } catch (err: any) {
       toast.error("Erro ao salvar licença.");
       throw err;

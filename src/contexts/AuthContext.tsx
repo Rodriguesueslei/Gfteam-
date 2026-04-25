@@ -4,7 +4,7 @@ import { auth as masterAuth, db as masterDb, createTenantInstance, logout as fir
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, where, Firestore } from 'firebase/firestore';
 import { seedTenantData } from '../infrastructure/firebase/seed';
 
-export type UserRole = 'admin' | 'receptionist' | 'professor' | 'user' | 'checkin_tablet' | string;
+export type UserRole = 'admin' | 'tenant_admin' | 'receptionist' | 'professor' | 'user' | 'checkin_tablet' | string;
 
 export interface UserPermissions {
   dashboard: boolean;
@@ -21,6 +21,9 @@ export interface UserPermissions {
 
 const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
   admin: {
+    dashboard: true, students: true, finance: true, inventory: true, classes: true, settings: true, users: true, checkin: true, reports: true
+  },
+  tenant_admin: {
     dashboard: true, students: true, finance: true, inventory: true, classes: true, settings: true, users: true, checkin: true, reports: true
   },
   receptionist: {
@@ -401,7 +404,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const isSuperAdmin = !!user?.email && SUPER_ADMIN_EMAILS.includes(user.email);
   const isLicenseOwner = licenseStatus === 'active';
-  const isAdmin = role === 'admin' || isSuperAdmin || isLicenseOwner;
+  const isAdmin = role === 'admin' || role === 'tenant_admin' || isSuperAdmin || isLicenseOwner;
   const isApprovedFinal = isApproved || isSuperAdmin || isLicenseOwner;
 
   useEffect(() => {

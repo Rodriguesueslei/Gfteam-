@@ -284,9 +284,36 @@
         "professorName": { "type": "string", "description": "Name of the professor" },
         "note": { "type": "string", "description": "Technical or behavioral note" },
         "date": { "type": "string", "format": "date-time", "description": "Date of evaluation" },
-        "type": { "type": "string", "enum": ["Technical", "Behavioral", "General"], "description": "Type of note" }
+        "type": { "type": "string", "enum": ["Technical", "Behavioral", "General"], "description": "Type of note" },
+        "tenantId": { "type": "string", "description": "Tenant ID" }
       },
-      "required": ["studentId", "note", "date"]
+      "required": ["studentId", "note", "date", "tenantId"]
+    },
+    "tenant": {
+      "title": "Tenant",
+      "description": "A gym/school tenant in the platform",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Name of the academy" },
+        "plan": { "type": "string", "enum": ["free", "pro", "enterprise"], "description": "Subscription plan" },
+        "status": { "type": "string", "enum": ["active", "inactive", "pending"], "description": "Tenant status" },
+        "slug": { "type": "string", "description": "Unique URL slug" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation date" }
+      },
+      "required": ["name", "plan", "status"]
+    },
+    "user": {
+      "title": "User",
+      "description": "A system user",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "User name" },
+        "email": { "type": "string", "format": "email", "description": "Email address" },
+        "role": { "type": "string", "description": "User role" },
+        "approved": { "type": "boolean", "description": "Approval status" },
+        "tenantId": { "type": "string", "description": "Tenant ID" }
+      },
+      "required": ["name", "email", "role", "tenantId"]
     },
     "backup": {
       "title": "Backup",
@@ -405,6 +432,14 @@
     "/licenses/{licenseId}": {
       "schema": "license",
       "description": "Global SaaS licenses managed by the platform owner"
+    },
+    "/tenants/{tenantId}": {
+      "schema": "tenant",
+      "description": "Academy tenants"
+    },
+    "/users/{userId}": {
+      "schema": "user",
+      "description": "System users"
     }
   }
 }

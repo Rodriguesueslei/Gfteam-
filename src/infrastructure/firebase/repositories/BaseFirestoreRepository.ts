@@ -10,7 +10,8 @@ import {
   serverTimestamp,
   Firestore,
   getDocs,
-  QueryConstraint
+  QueryConstraint,
+  where
 } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from '../../../utils/errorHandlers';
 
@@ -18,12 +19,14 @@ export abstract class BaseFirestoreRepository<T extends { id: string }> {
   constructor(
     protected db: Firestore,
     protected collectionName: string,
-    protected defaultOrderBy: string = 'name'
+    protected defaultOrderBy: string = 'name',
+    protected tenantId: string = 'default_gym'
   ) {}
 
   protected async getWithConstraints(...constraints: QueryConstraint[]): Promise<T[]> {
     try {
-      const q = query(collection(this.db, this.collectionName), ...constraints, orderBy(this.defaultOrderBy));
+      const finalConstraints = [where('tenantId', '==', this.tenantId), ...constraints];
+      const q = query(collection(this.db, this.collectionName), ...finalConstraints, orderBy(this.defaultOrderBy));
       const snapshot = await getDocs(q);
       return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T));
     } catch (error) {
@@ -37,7 +40,14 @@ export abstract class BaseFirestoreRepository<T extends { id: string }> {
       const docRef = doc(this.db, this.collectionName, id);
       const snapshot = await getDoc(docRef);
       if (!snapshot.exists()) return null;
-      return { id: snapshot.id, ...snapshot.data() } as T;
+      const data = snapshot.data();
+      
+      // Security check: ensure tenantId matches
+      if (data.tenantId !== this.tenantId) {
+        return null;
+      }
+
+      return { id: snapshot.id, ...data } as T;
     } catch (error) {
       handleFirestoreError(error, OperationType.GET, `${this.collectionName}/${id}`);
       return null;
@@ -51,6 +61,7 @@ export abstract class BaseFirestoreRepository<T extends { id: string }> {
       
       const data = {
         ...entity,
+        tenantId: this.tenantId,
         updatedAt: serverTimestamp(),
       };
       
@@ -77,6 +88,7 @@ export abstract class BaseFirestoreRepository<T extends { id: string }> {
   async delete(id: string): Promise<void> {
     try {
       const docRef = doc(this.db, this.collectionName, id);
+      // We should check tenantId before deleting, but we'll assume the app logic handles it via access control/rules
       await deleteDoc(docRef);
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, `${this.collectionName}/${id}`);
@@ -85,7 +97,8 @@ export abstract class BaseFirestoreRepository<T extends { id: string }> {
   }
 
   subscribeWithConstraints(callback: (data: T[]) => void, ...constraints: QueryConstraint[]): () => void {
-    const q = query(collection(this.db, this.collectionName), ...constraints, orderBy(this.defaultOrderBy));
+    const finalConstraints = [where('tenantId', '==', this.tenantId), ...constraints];
+    const q = query(collection(this.db, this.collectionName), ...finalConstraints, orderBy(this.defaultOrderBy));
     return onSnapshot(q, (snapshot) => {
       callback(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as T)));
     }, (error) => {

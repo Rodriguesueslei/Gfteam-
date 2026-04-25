@@ -63,7 +63,7 @@ export const GraduationSuggestions = ({ students, checkIns, belts }: GraduationS
         startDate
       };
     })
-    .filter(s => s.progress >= 80) // Only show those close to promotion
+    .filter(s => s !== null && s.progress >= 80) // Only show those close to promotion
     .sort((a, b) => b.progress - a.progress)
     .slice(0, 5);
   }, [students, checkIns]);

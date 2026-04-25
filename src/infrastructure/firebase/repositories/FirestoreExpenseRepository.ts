@@ -6,8 +6,8 @@ export class FirestoreExpenseRepository
   extends BaseFirestoreRepository<IExpense & { id: string }> 
   implements IExpenseRepository {
   
-  constructor(db: Firestore) {
-    super(db, 'expenses', 'date');
+  constructor(db: Firestore, tenantId: string = 'default_gym') {
+    super(db, 'expenses', 'date', tenantId);
   }
 
   async findAll(): Promise<IExpense[]> {

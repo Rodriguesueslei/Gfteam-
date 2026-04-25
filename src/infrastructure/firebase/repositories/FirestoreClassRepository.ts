@@ -6,8 +6,8 @@ export class FirestoreClassRepository
   extends BaseFirestoreRepository<IClass & { id: string }> 
   implements IClassRepository {
   
-  constructor(db: Firestore) {
-    super(db, 'classes', 'startTime');
+  constructor(db: Firestore, tenantId: string = 'default_gym') {
+    super(db, 'classes', 'startTime', tenantId);
   }
 
   async findAll(): Promise<IClass[]> {
@@ -28,6 +28,7 @@ export class FirestoreClassRepository
       const newRef = doc(collection(this.db, 'classes'));
       batch.set(newRef, {
         ...cls,
+        tenantId: this.tenantId,
         createdAt: new Date(),
         updatedAt: new Date()
       });

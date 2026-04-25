@@ -7,11 +7,11 @@ import toast from 'react-hot-toast';
 export const useInstallments = (enabled: boolean = true) => {
   const [installments, setInstallments] = useState<IInstallment[]>([]);
   const [loading, setLoading] = useState(true);
-  const { tenantDb } = useAuth();
+  const { tenantDb, tenantId } = useAuth();
 
   const repository = useMemo(() => {
-    return tenantDb ? new FirestoreInstallmentRepository(tenantDb) : null;
-  }, [tenantDb]);
+    return tenantDb ? new FirestoreInstallmentRepository(tenantDb, tenantId) : null;
+  }, [tenantDb, tenantId]);
 
   useEffect(() => {
     if (!enabled || !repository) {

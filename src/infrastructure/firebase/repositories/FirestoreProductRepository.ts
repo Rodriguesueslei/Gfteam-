@@ -6,8 +6,8 @@ export class FirestoreProductRepository
   extends BaseFirestoreRepository<IProduct & { id: string }> 
   implements IProductRepository {
   
-  constructor(db: Firestore) {
-    super(db, 'products', 'name');
+  constructor(db: Firestore, tenantId: string = 'default_gym') {
+    super(db, 'products', 'name', tenantId);
   }
 
   async findAll(): Promise<IProduct[]> {

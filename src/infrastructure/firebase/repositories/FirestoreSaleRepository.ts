@@ -6,8 +6,8 @@ export class FirestoreSaleRepository
   extends BaseFirestoreRepository<ISale & { id: string }> 
   implements ISaleRepository {
   
-  constructor(db: Firestore) {
-    super(db, 'sales', 'date');
+  constructor(db: Firestore, tenantId: string = 'default_gym') {
+    super(db, 'sales', 'date', tenantId);
   }
 
   async findAll(): Promise<ISale[]> {

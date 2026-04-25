@@ -6,8 +6,8 @@ export class FirestoreInstructorRepository
   extends BaseFirestoreRepository<IInstructor & { id: string }> 
   implements IInstructorRepository {
   
-  constructor(db: Firestore) {
-    super(db, 'instructors');
+  constructor(db: Firestore, tenantId: string = 'default_gym') {
+    super(db, 'instructors', 'name', tenantId);
   }
 
   async findAll(): Promise<IInstructor[]> {

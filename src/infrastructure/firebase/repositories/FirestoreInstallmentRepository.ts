@@ -6,8 +6,8 @@ export class FirestoreInstallmentRepository
   extends BaseFirestoreRepository<IInstallment & { id: string }> 
   implements IInstallmentRepository {
   
-  constructor(db: Firestore) {
-    super(db, 'installments', 'dueDate');
+  constructor(db: Firestore, tenantId: string = 'default_gym') {
+    super(db, 'installments', 'dueDate', tenantId);
   }
 
   async findAll(): Promise<IInstallment[]> {

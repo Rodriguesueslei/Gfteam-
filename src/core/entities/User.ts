@@ -4,6 +4,7 @@ export interface User {
   email: string;
   role: string;
   approved: boolean;
+  tenantId?: string;
   photoURL?: string;
   createdAt?: any;
   updatedAt?: any;

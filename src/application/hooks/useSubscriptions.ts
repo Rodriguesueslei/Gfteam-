@@ -6,11 +6,11 @@ import { FirestoreSubscriptionRepository } from '../../infrastructure/firebase/r
 export function useSubscriptions(enabled: boolean) {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loading, setLoading] = useState(true);
-  const { tenantDb } = useAuth();
+  const { tenantDb, tenantId } = useAuth();
 
   const repository = useMemo(() => {
-    return tenantDb ? new FirestoreSubscriptionRepository(tenantDb) : null;
-  }, [tenantDb]);
+    return tenantDb ? new FirestoreSubscriptionRepository(tenantDb, tenantId) : null;
+  }, [tenantDb, tenantId]);
 
   useEffect(() => {
     if (!enabled || !repository) {

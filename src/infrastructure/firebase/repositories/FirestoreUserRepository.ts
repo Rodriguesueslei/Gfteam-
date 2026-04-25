@@ -8,8 +8,8 @@ import { IUserRepository } from '../../../application/ports/IUserRepository';
 import { BaseFirestoreRepository } from './BaseFirestoreRepository';
 
 export class FirestoreUserRepository extends BaseFirestoreRepository<User> implements IUserRepository {
-  constructor(db: Firestore) {
-    super(db, 'users', 'name');
+  constructor(db: Firestore, tenantId: string = 'default_gym') {
+    super(db, 'users', 'name', tenantId);
   }
 
   private buildConstraints(filters?: UserFilters): QueryConstraint[] {

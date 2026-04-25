@@ -9,8 +9,8 @@ import { BaseFirestoreRepository } from './BaseFirestoreRepository';
 import { IPaymentRepository } from '../../../application/ports/IPaymentRepository';
 
 export class FirestorePaymentRepository extends BaseFirestoreRepository<Payment> implements IPaymentRepository {
-  constructor(db: Firestore) {
-    super(db, 'payments', 'date');
+  constructor(db: Firestore, tenantId: string = 'default_gym') {
+    super(db, 'payments', 'date', tenantId);
   }
 
   private buildConstraints(filters?: PaymentFilters): QueryConstraint[] {

@@ -7,11 +7,11 @@ import toast from 'react-hot-toast';
 export const useSales = (enabled: boolean = true) => {
   const [sales, setSales] = useState<ISale[]>([]);
   const [loading, setLoading] = useState(true);
-  const { tenantDb } = useAuth();
+  const { tenantDb, tenantId } = useAuth();
 
   const repository = useMemo(() => {
-    return tenantDb ? new FirestoreSaleRepository(tenantDb) : null;
-  }, [tenantDb]);
+    return tenantDb ? new FirestoreSaleRepository(tenantDb, tenantId) : null;
+  }, [tenantDb, tenantId]);
 
   useEffect(() => {
     if (!enabled || !repository) {

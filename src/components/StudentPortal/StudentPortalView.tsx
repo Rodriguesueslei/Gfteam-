@@ -49,15 +49,15 @@ export const StudentPortalView = () => {
 
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
 
+  // Use students as linkedStudents since they are already filtered by hook if user?.email is provided
+  const linkedStudents = students;
+
   useEffect(() => {
     // Auto-select if there's only one student and none is selected
     if (linkedStudents.length === 1 && !selectedStudentId) {
       setSelectedStudentId(linkedStudents[0].id);
     }
   }, [linkedStudents, selectedStudentId]);
-
-  // Find all students linked to this email
-  const linkedStudents = useMemo(() => students.filter(s => s.email === user?.email), [students, user?.email]);
 
   const studentData = useMemo(() => {
     return selectedStudentId ? linkedStudents.find(s => s.id === selectedStudentId) : null;

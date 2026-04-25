@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, useMemo, useCall
 import { onAuthStateChanged, User, Auth, GoogleAuthProvider, linkWithPopup, unlink, EmailAuthProvider, sendPasswordResetEmail, updatePassword } from 'firebase/auth';
 import { auth as masterAuth, db as masterDb, createTenantInstance, logout as firebaseLogout, loginWithEmail as firebaseLoginWithEmail, googleProvider } from '../firebase';
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, where, Firestore } from 'firebase/firestore';
+import { seedTenantData } from '../infrastructure/firebase/seed';
 
 export type UserRole = 'admin' | 'receptionist' | 'professor' | 'user' | 'checkin_tablet' | string;
 
@@ -36,8 +37,19 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
   }
 };
 
+export interface Tenant {
+  id: string;
+  name: string;
+  plan: string;
+  status: 'active' | 'inactive' | 'pending';
+  slug: string;
+  config?: any;
+}
+
 interface AuthContextType {
-  user: User | null;
+  user: User | null; // Auth object
+  currentUser: any | null; // Database user profile
+  currentTenant: Tenant | null;
   loading: boolean;
   role: UserRole;
   permissions: UserPermissions;
@@ -56,6 +68,7 @@ interface AuthContextType {
   } | null;
   tenantDb: Firestore;
   masterDb: Firestore;
+  tenantId: string;
   logout: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
   linkGoogle: () => Promise<void>;
@@ -67,6 +80,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({ 
   user: null, 
+  currentUser: null,
+  currentTenant: null,
   loading: true, 
   role: 'user',
   permissions: DEFAULT_PERMISSIONS.user,
@@ -80,6 +95,7 @@ const AuthContext = createContext<AuthContextType>({
   gymInfo: null,
   tenantDb: masterDb,
   masterDb: masterDb,
+  tenantId: 'default_gym',
   logout: async () => {},
   loginWithEmail: async () => {},
   linkGoogle: async () => {},
@@ -96,6 +112,8 @@ const SUPER_ADMIN_EMAILS = [
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<any | null>(null);
+  const [currentTenant, setCurrentTenant] = useState<Tenant | null>(null);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<UserRole>('user');
   const [permissions, setPermissions] = useState<UserPermissions>(DEFAULT_PERMISSIONS.user);
@@ -108,6 +126,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const unsubGymSlugRef = React.useRef<(() => void) | null>(null);
 
   const [gymSlug, setGymSlug] = useState<string | null>(null);
+  const [hasSeeded, setHasSeeded] = useState(false);
+
+  // Seed initial tenant data on mount
+  useEffect(() => {
+    if (!hasSeeded) {
+      seedTenantData(masterDb).then(() => setHasSeeded(true));
+    }
+  }, [hasSeeded]);
 
   // Parse gym slug from URL on init
   useEffect(() => {
@@ -203,6 +229,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const tenantDb = tenantInstances.db;
 
+  const tenantId = useMemo(() => {
+    return gymInfo?.slug || 'default_gym';
+  }, [gymInfo?.slug]);
+
   // Failsafe to ensure app doesn't stay stuck on "Autenticando"
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -275,94 +305,89 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const setupUserProfile = async () => {
       try {
         const isSuperAdmin = !!user.email && SUPER_ADMIN_EMAILS.includes(user.email);
-        const hasExternalConfig = gymInfo?.config && gymInfo.config.apiKey;
-        const targetDb = (hasExternalConfig && !isSuperAdmin) ? tenantDb : masterDb;
         
-        console.log("AuthContext: Setting up Profile. targetDb is", (hasExternalConfig && !isSuperAdmin) ? "TENANT" : "MASTER");
+        // Always load profile from Master first
+        const masterUserDocRef = doc(masterDb, 'users', user.uid);
+        const masterUserDoc = await getDoc(masterUserDocRef);
         
-        const userDocRef = doc(targetDb, 'users', user.uid);
-        const userDoc = await getDoc(userDocRef);
-        
-        let currentRole: string = 'user';
-        let currentApproved: boolean = false;
+        let profileData: any = null;
 
-        if (!userDoc.exists()) {
-          console.log("AuthContext: UID profile not found. Checking for Email profile:", user.email);
-          // Check for pre-approved profile by email (standard for new academies created by SuperAdmin)
-          const emailDocRef = doc(targetDb, 'users', user.email!.toLowerCase().trim());
+        if (!masterUserDoc.exists()) {
+          console.log("AuthContext: Profile not found in master. Checking for pre-approved by email.");
+          const emailDocRef = doc(masterDb, 'users', user.email!.toLowerCase().trim());
           const emailDoc = await getDoc(emailDocRef);
 
           if (emailDoc.exists()) {
             const emailData = emailDoc.data();
-            console.log("AuthContext: Found email-based profile! Role:", emailData.role);
-            currentRole = emailData.role || 'admin';
-            currentApproved = emailData.approved ?? true;
-            
-            // Create the UID-based document with the pre-approved data
-            await setDoc(userDocRef, {
+            profileData = {
               ...emailData,
               uid: user.uid,
               name: user.displayName || emailData.name || 'Admin',
               email: user.email,
-              role: currentRole,
-              approved: currentApproved,
-              createdAt: emailData.createdAt || serverTimestamp(),
-              updatedAt: serverTimestamp()
-            });
-
-            // Cleanup the email-based document if it's the master DB
-            if (targetDb === masterDb) {
-              try {
-                await deleteDoc(emailDocRef);
-              } catch (e) {
-                console.warn("AuthContext: Could not delete legacy email doc:", e);
-              }
-            }
+              role: emailData.role || 'admin',
+              approved: emailData.approved ?? true,
+              tenantId: emailData.tenantId || 'default_gym'
+            };
+            await setDoc(masterUserDocRef, { ...profileData, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+            try { await deleteDoc(emailDocRef); } catch (e) {}
           } else {
-            console.log("AuthContext: No email profile found either, creating new pending.");
-            currentRole = isSuperAdmin ? 'admin' : 'user';
-            currentApproved = isSuperAdmin;
-            
-            await setDoc(userDocRef, {
+            profileData = {
               name: user.displayName,
               email: user.email,
               photoURL: user.photoURL,
-              role: currentRole,
-              approved: currentApproved,
-              createdAt: serverTimestamp()
-            });
+              role: isSuperAdmin ? 'admin' : 'user',
+              approved: isSuperAdmin,
+              tenantId: 'default_gym'
+            };
+            await setDoc(masterUserDocRef, { ...profileData, createdAt: serverTimestamp() });
           }
         } else {
-          const data = userDoc.data();
-          console.log("AuthContext: Profile loaded. Role:", data?.role);
-          currentRole = data?.role || 'user';
-          currentApproved = data?.approved || false;
+          profileData = { id: masterUserDoc.id, ...masterUserDoc.data() };
+        }
 
-          if (isSuperAdmin && (currentRole !== 'admin' || !currentApproved)) {
-            currentRole = 'admin';
-            currentApproved = true;
-            await setDoc(userDocRef, { role: 'admin', approved: true }, { merge: true });
+        // Fix superadmin missing flags
+        if (isSuperAdmin && (profileData.role !== 'admin' || !profileData.approved)) {
+          profileData.role = 'admin';
+          profileData.approved = true;
+          await setDoc(masterUserDocRef, { role: 'admin', approved: true }, { merge: true });
+        }
+
+        setCurrentUser(profileData);
+        setRole(profileData.role);
+        setIsApproved(profileData.approved);
+
+        // Load Tenant Metadata
+        const tid = profileData.tenantId || 'default_gym';
+        const tenantDoc = await getDoc(doc(masterDb, 'tenants', tid));
+        if (tenantDoc.exists()) {
+          const tData = tenantDoc.data();
+          setCurrentTenant({ id: tenantDoc.id, ...tData } as Tenant);
+          
+          // Sync with gymInfo for backward compatibility
+          if (!gymSlug) {
+            setGymInfo({
+              name: tData.name,
+              slug: tData.slug || tid,
+              isExternal: !!tData.config,
+              config: tData.config
+            });
+            setLicenseStatus('active');
           }
         }
 
-        setRole(currentRole as UserRole);
-        setIsApproved(currentApproved);
-
         // Listen for profile changes
-        unsubUserDoc = onSnapshot(userDocRef, (docSnap) => {
+        unsubUserDoc = onSnapshot(masterUserDocRef, (docSnap) => {
           if (docSnap.exists()) {
-            const data = docSnap.data();
-            const newRole = data.role || 'user';
-            const newApproved = data.approved || false;
-            setIsApproved(newApproved);
-            setRole(newRole as UserRole);
+            const data: any = { id: docSnap.id, ...docSnap.data() };
+            setCurrentUser(data);
+            setIsApproved(data.approved || false);
+            setRole(data.role || 'user');
           }
         });
 
       } catch (error) {
         console.error("AuthContext: Profile setup error:", error);
       } finally {
-        console.log("AuthContext: Profile setup complete, setting loading=false");
         setLoading(false);
       }
     };
@@ -464,6 +489,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{ 
       user, 
+      currentUser,
+      currentTenant,
       loading: loading || licenseLoading, 
       role, 
       permissions, 
@@ -477,6 +504,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       gymInfo,
       tenantDb,
       masterDb,
+      tenantId,
       logout,
       loginWithEmail,
       linkGoogle,

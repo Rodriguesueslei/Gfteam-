@@ -4,8 +4,8 @@ import { ISubscriptionRepository } from '../../../application/ports/ISubscriptio
 import { BaseFirestoreRepository } from './BaseFirestoreRepository';
 
 export class FirestoreSubscriptionRepository extends BaseFirestoreRepository<Subscription> implements ISubscriptionRepository {
-  constructor(db: Firestore) {
-    super(db, 'subscriptions', 'status');
+  constructor(db: Firestore, tenantId: string = 'default_gym') {
+    super(db, 'subscriptions', 'status', tenantId);
   }
 
   async getAll(): Promise<Subscription[]> {

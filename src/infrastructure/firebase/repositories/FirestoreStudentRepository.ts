@@ -8,8 +8,8 @@ import { IStudentRepository } from '../../../application/ports/IStudentRepositor
 import { BaseFirestoreRepository } from './BaseFirestoreRepository';
 
 export class FirestoreStudentRepository extends BaseFirestoreRepository<Student> implements IStudentRepository {
-  constructor(db: Firestore) {
-    super(db, 'students', 'name');
+  constructor(db: Firestore, tenantId: string = 'default_gym') {
+    super(db, 'students', 'name', tenantId);
   }
 
   private buildConstraints(filters?: StudentFilters): QueryConstraint[] {

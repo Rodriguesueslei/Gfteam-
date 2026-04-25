@@ -9,8 +9,8 @@ import { ICheckInRepository } from '../../../application/ports/ICheckInRepositor
 import { BaseFirestoreRepository } from './BaseFirestoreRepository';
 
 export class FirestoreCheckInRepository extends BaseFirestoreRepository<CheckIn> implements ICheckInRepository {
-  constructor(db: Firestore) {
-    super(db, 'checkins', 'time');
+  constructor(db: Firestore, tenantId: string = 'default_gym') {
+    super(db, 'checkins', 'time', tenantId);
   }
 
   private buildConstraints(filters?: CheckInFilters): QueryConstraint[] {

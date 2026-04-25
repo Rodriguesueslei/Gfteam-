@@ -7,11 +7,11 @@ import toast from 'react-hot-toast';
 export const useClasses = (enabled: boolean = true) => {
   const [classes, setClasses] = useState<IClass[]>([]);
   const [loading, setLoading] = useState(true);
-  const { tenantDb } = useAuth();
+  const { tenantDb, tenantId } = useAuth();
 
   const repository = useMemo(() => {
-    return tenantDb ? new FirestoreClassRepository(tenantDb) : null;
-  }, [tenantDb]);
+    return tenantDb ? new FirestoreClassRepository(tenantDb, tenantId) : null;
+  }, [tenantDb, tenantId]);
 
   useEffect(() => {
     if (!enabled || !repository) {

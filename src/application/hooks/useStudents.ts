@@ -10,19 +10,19 @@ import { useAuth } from '../../contexts/AuthContext';
 export function useStudents(enabled: boolean, isAdmin?: boolean, userEmail?: string | null) {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
-  const { tenantDb } = useAuth();
+  const { tenantDb, tenantId } = useAuth();
 
   const repository = useMemo(() => {
-    return tenantDb ? new FirestoreStudentRepository(tenantDb) : null;
-  }, [tenantDb]);
+    return tenantDb ? new FirestoreStudentRepository(tenantDb, tenantId) : null;
+  }, [tenantDb, tenantId]);
 
   const gradRepository = useMemo(() => {
-    return tenantDb ? new FirestoreGraduationRepository(tenantDb) : null;
-  }, [tenantDb]);
+    return tenantDb ? new FirestoreGraduationRepository(tenantDb, tenantId) : null;
+  }, [tenantDb, tenantId]);
 
   const evalRepository = useMemo(() => {
-    return tenantDb ? new FirestoreEvaluationRepository(tenantDb) : null;
-  }, [tenantDb]);
+    return tenantDb ? new FirestoreEvaluationRepository(tenantDb, tenantId) : null;
+  }, [tenantDb, tenantId]);
 
   useEffect(() => {
     if (!enabled || !repository) {

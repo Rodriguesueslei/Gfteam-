@@ -4,8 +4,8 @@ import { IGraduationRepository } from '../../../application/ports/IGraduationRep
 import { BaseFirestoreRepository } from './BaseFirestoreRepository';
 
 export class FirestoreGraduationRepository extends BaseFirestoreRepository<Graduation> implements IGraduationRepository {
-  constructor(db: Firestore) {
-    super(db, 'graduations', 'date');
+  constructor(db: Firestore, tenantId: string = 'default_gym') {
+    super(db, 'graduations', 'date', tenantId);
   }
 
   async getAll(): Promise<Graduation[]> {

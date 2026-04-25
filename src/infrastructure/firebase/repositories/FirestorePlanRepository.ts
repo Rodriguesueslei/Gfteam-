@@ -6,8 +6,8 @@ export class FirestorePlanRepository
   extends BaseFirestoreRepository<IPlan & { id: string }> 
   implements IPlanRepository {
   
-  constructor(db: Firestore) {
-    super(db, 'plans', 'name');
+  constructor(db: Firestore, tenantId: string = 'default_gym') {
+    super(db, 'plans', 'name', tenantId);
   }
 
   async findAll(): Promise<IPlan[]> {

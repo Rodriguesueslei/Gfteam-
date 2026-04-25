@@ -1,26 +1,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    //
-    // Collection: students
-    // Fields: name (string), email (string), phone (string), belt (string), 
-    //         stripes (number), joinDate (timestamp), status (string),
-    //         lastPaymentDate (timestamp), nextPaymentDate (timestamp),
-    //         birthDate (string), address (string), guardianName (string),
-    //         guardianDoc (string), guardianEmail (string), guardianPhone (string)
-    //
-    // Collection: classes
-    // Fields: title (string), instructor (string), startTime (timestamp), 
-    //         endTime (timestamp), maxCapacity (number), attendees (list of strings)
-    //
-    // Collection: payments
-    // Fields: studentId (string), amount (number), date (timestamp), 
-    //         method (string), period (string)
-    //
-    // ===============================================================
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
 
     // ===============================================================
     // Helper Functions
@@ -29,280 +13,101 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-
-    function hasAdminLicense() {
-      return isAuthenticated() && 
-             exists(/databases/$(database)/documents/licenses/$(request.auth.token.email)) &&
-             get(/databases/$(database)/documents/licenses/$(request.auth.token.email)).data.status == 'active';
-    }
-
-    function isAdmin() {
-      return isAuthenticated() && 
-             (request.auth.token.email == "rodrigues.ueslei@gmail.com" || 
-              request.auth.uid == "MtaH6LrL5vbL8Dp7pZxPeQrEJyP2" ||
-              (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'admin') ||
-              hasAdminLicense());
-    }
-
     function isSuperAdmin() {
       return isAuthenticated() && 
              (request.auth.token.email == "rodrigues.ueslei@gmail.com" || 
               request.auth.uid == "MtaH6LrL5vbL8Dp7pZxPeQrEJyP2");
     }
 
-    function hasRole(role) {
-      return isAuthenticated() && 
-             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-             getUserData().role == role;
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    function isReceptionist() {
-      return hasRole('receptionist');
+    // The core of multi-tenancy: get the tenantId from the user profile document
+    function userTenantId() {
+      return getUserData().tenantId;
     }
 
-    function isProfessor() {
-      return hasRole('professor');
+    function isTenantAdmin() {
+      return isAuthenticated() && (isSuperAdmin() || getUserData().role == 'admin');
     }
 
-    function isCheckInTablet() {
-      return hasRole('checkin_tablet');
+    function isTenantStaff() {
+      return isAuthenticated() && (isTenantAdmin() || getUserData().role in ['receptionist', 'professor']);
     }
 
+    function belongsToUserTenant(data) {
+      return isSuperAdmin() || (isAuthenticated() && data.tenantId == userTenantId());
+    }
+
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // Validation patterns
     function isValidStudent(data) {
-      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.email is string && data.email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$") &&
-             data.belt is string &&
-             data.status in ['Active', 'Inactive', 'Archived'] &&
-             data.category in ['Adulto', 'Kids', 'Juvenil'] &&
-             (!('disability' in data) || data.disability is string) &&
-             (!('faceDescriptor' in data) || data.faceDescriptor is string) &&
-             (!('facePhoto' in data) || data.facePhoto is string) &&
-             (!('planId' in data) || data.planId is string);
-    }
-
-    function isValidClass(data) {
-      return data.title is string && data.title.size() > 0 && data.title.size() < 100 &&
-             data.startTime is string && data.endTime is string &&
-             (!('categories' in data) || data.categories is list) &&
-             (!('instructorIds' in data) || data.instructorIds is list) &&
-             (!('daysOfWeek' in data) || data.daysOfWeek is list) &&
-             (!('dayOfWeek' in data) || data.dayOfWeek is string) &&
-             (!('isRecurring' in data) || data.isRecurring is bool) &&
-             (!('recurrenceId' in data) || data.recurrenceId is string) &&
-             (!('recurrenceWeeks' in data) || data.recurrenceWeeks is number) &&
-             (!('capacity' in data) || data.capacity is number);
-    }
-
-    function isValidPayment(data) {
-      return data.studentId is string && data.amount is number && data.amount > 0 &&
-             data.date is timestamp && 
-             (!('period' in data) || data.period is string) &&
-             (!('method' in data) || data.method is string) &&
-             (!('status' in data) || data.status is string) &&
-             (!('type' in data) || data.type is string);
-    }
-
-    function isValidGraduation(data) {
-      return data.studentId is string && 
-             data.belt is string &&
-             data.stripes is number && data.stripes >= 0 && data.stripes <= 4 &&
-             data.date is timestamp;
-    }
-
-    function isValidPlan(data) {
-      return data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.price is number && data.price >= 0 &&
-             data.durationMonths is number && data.durationMonths > 0 &&
-             data.status in ['Active', 'Inactive'];
-    }
-
-    function isValidInstallment(data) {
-      return data.saleId is string &&
-             data.amount is number && data.amount > 0 &&
-             data.installmentNumber is number && data.installmentNumber > 0 &&
-             data.totalInstallments is number && data.totalInstallments > 0 &&
-             data.dueDate is timestamp &&
-             data.status in ['pending', 'paid'] &&
-             (!('studentId' in data) || data.studentId is string || data.studentId == null) &&
-             (!('studentName' in data) || data.studentName is string) &&
-             (!('productName' in data) || data.productName is string) &&
-             (!('paymentMethod' in data) || data.paymentMethod is string) &&
-             (!('paidAt' in data) || data.paidAt is timestamp);
-    }
-
-    function isValidEvaluation(data) {
-      return data.studentId is string &&
-             data.note is string && data.note.size() > 0 && data.note.size() < 2000 &&
-             data.date is timestamp &&
-             (!('professorId' in data) || data.professorId is string) &&
-             (!('professorName' in data) || data.professorName is string) &&
-             (!('type' in data) || data.type in ['Technical', 'Behavioral', 'General']);
-    }
-
-    function isValidSubscription(data) {
-      return data.studentId is string &&
-             data.planId is string &&
-             data.status in ['active', 'past_due', 'canceled', 'unpaid', 'trialing'] &&
-             data.amount is number &&
-             data.currentPeriodEnd is timestamp;
-    }
-
-    function isValidInvoice(data) {
-      return data.studentId is string &&
-             data.amount is number &&
-             data.dueDate is timestamp &&
-             data.status in ['paid', 'pending', 'overdue', 'voided'];
+      return data.name is string && data.name.size() > 0 && 
+             data.email is string && 
+             data.tenantId is string;
     }
 
     // ===============================================================
     // Rules
     // ===============================================================
 
+    match /tenants/{tenantId} {
+      allow read: if isAuthenticated() && (tenantId == userTenantId() || isSuperAdmin());
+      allow write: if isSuperAdmin();
+    }
+
     match /users/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      allow write: if isAdmin() || (isAuthenticated() && request.auth.uid == userId && !('role' in request.resource.data));
-      allow create: if isAuthenticated() && request.auth.uid == userId && 
-                    (request.resource.data.role == 'user' || isAdmin());
-      allow delete: if isAdmin();
-    }
-
-    match /students/{studentId} {
-      // Students can only read their OWN data based on email
-      allow read: if isAuthenticated() && (
-        isAdmin() || isReceptionist() || isProfessor() ||
-        (resource.data.email == request.auth.token.email)
+      allow read: if isAuthenticated() && (request.auth.uid == userId || (belongsToUserTenant(existing()) && isTenantStaff()) || isSuperAdmin());
+      allow create: if isAuthenticated() && (
+        (request.auth.uid == userId && incoming().role == 'user' && (incoming().tenantId == 'default_gym' || incoming().tenantId == null)) ||
+        isSuperAdmin()
       );
-      allow create, update: if (isAdmin() || isReceptionist()) && isValidStudent(request.resource.data);
-      allow delete: if isAdmin() || isReceptionist();
-    }
-
-    match /classes/{classId} {
-      allow read: if isAuthenticated();
-      allow create, delete: if isAdmin() || isReceptionist();
-      
-      // Full update for Admin/Receptionist
-      allow update: if (isAdmin() || isReceptionist()) && isValidClass(request.resource.data);
-      
-      // Partial updates
-      allow update: if (isAdmin() || isProfessor() || isCheckInTablet()) && 
-                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['presence']);
-      
-      allow update: if isAuthenticated() && 
-                    request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendees']) &&
-                    request.resource.data.attendees.size() <= resource.data.maxCapacity;
-
-      match /checkIns/{checkInId} {
-        allow read: if isAuthenticated();
-        allow create: if isAuthenticated();
-      }
-    }
-
-    match /payments/{paymentId} {
-      // Students can only read their OWN payments
-      allow read: if isAuthenticated() && (
-        isAdmin() || isReceptionist() || 
-        // Simplified ownership check: if the payment's student belongs to the authenticated email
-        (get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.email == request.auth.token.email)
+      allow update: if isSuperAdmin() || (
+        isAuthenticated() && request.auth.uid == userId && 
+        (!('tenantId' in incoming()) || incoming().tenantId == existing().tenantId) &&
+        (!('role' in incoming()) || incoming().role == existing().role)
+      ) || (
+        isTenantAdmin() && belongsToUserTenant(existing()) &&
+        (!('tenantId' in incoming()) || incoming().tenantId == existing().tenantId)
       );
-      allow create, update: if (isAdmin() || isReceptionist()) && isValidPayment(request.resource.data);
-      allow delete: if isAdmin();
     }
 
-    match /instructors/{instructorId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAdmin() || isReceptionist();
+    // Catch-all for most tenant collections
+    match /{collectionName}/{docId} {
+      allow read: if isSuperAdmin() || (
+        isAuthenticated() && (
+          // If it is a list query, the client must filter by tenantId (which is checked by belongsToUserTenant)
+          (belongsToUserTenant(existing()) && (isTenantStaff() || collectionName in ['classes', 'plans', 'instructors', 'products'])) ||
+          
+          // Students reading their own data check (would require a join in rules, usually avoided for efficiency)
+          // For now, let's keep it simple: Staff can read all tenant data, users can read "public" tenant data like classes.
+          (collectionName in ['classes', 'plans', 'instructors', 'products'] && belongsToUserTenant(existing()))
+        )
+      );
+
+      allow create: if isSuperAdmin() || (
+        isAuthenticated() && isTenantStaff() && 
+        incoming().tenantId == userTenantId()
+      );
+
+      allow update, delete: if isSuperAdmin() || (
+        isAuthenticated() && isTenantAdmin() && 
+        belongsToUserTenant(existing()) &&
+        (!('tenantId' in incoming()) || incoming().tenantId == existing().tenantId)
+      );
     }
 
-    match /graduations/{graduationId} {
-      allow read: if isAuthenticated();
-      allow create, update: if (isAdmin() || isProfessor() || isReceptionist()) && isValidGraduation(request.resource.data);
-      allow delete: if isAdmin() || isProfessor() || isReceptionist();
-    }
-
-    match /belts/{beltId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    match /products/{productId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || isReceptionist();
-    }
-
-    match /sales/{saleId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin() || isReceptionist();
-    }
-
-    match /settings/{settingId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    match /secret_settings/{settingId} {
-      allow read, write: if isAdmin();
-    }
-
-    match /plans/{planId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAdmin() && isValidPlan(request.resource.data);
-      allow delete: if isAdmin();
-    }
-
-    match /expenses/{expenseId} {
-      allow read: if isAdmin() || isReceptionist();
-      allow create, update: if isAdmin() || isReceptionist();
-      allow delete: if isAdmin();
-    }
-
-    match /checkins/{checkInId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update, delete: if isAdmin() || isReceptionist();
-    }
-
-    match /installments/{installmentId} {
-      allow read: if isAdmin() || isReceptionist();
-      allow create, update: if (isAdmin() || isReceptionist()) && isValidInstallment(request.resource.data);
-      allow delete: if isAdmin();
-    }
-
-    match /evaluations/{evaluationId} {
-      allow read: if isAuthenticated();
-      allow create, update: if (isAdmin() || isProfessor()) && isValidEvaluation(request.resource.data);
-      allow delete: if isAdmin();
-    }
-
-    match /subscriptions/{subscriptionId} {
-      allow read: if isAdmin() || isReceptionist() || 
-                    (isAuthenticated() && get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.email == request.auth.token.email);
-      allow create, update: if (isAdmin() || isReceptionist()) && isValidSubscription(request.resource.data);
-      allow delete: if isAdmin();
-    }
-
-    match /invoices/{invoiceId} {
-      allow read: if isAdmin() || isReceptionist() || 
-                    (isAuthenticated() && get(/databases/$(database)/documents/students/$(resource.data.studentId)).data.email == request.auth.token.email);
-      allow create, update: if (isAdmin() || isReceptionist()) && isValidInvoice(request.resource.data);
-      allow delete: if isAdmin();
-    }
-
-    match /roles/{roleId} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    match /backups/{document=**} {
-      allow read, write: if isAdmin();
+    // Specific overrides or subcollections
+    match /classes/{classId}/checkIns/{checkInId} {
+      allow read: if isSuperAdmin() || (isAuthenticated() && belongsToUserTenant(get(/databases/$(database)/documents/classes/$(classId)).data));
+      allow create: if isAuthenticated() && belongsToUserTenant(get(/databases/$(database)/documents/classes/$(classId)).data);
     }
 
     match /licenses/{licenseId} {
       allow read, write: if isSuperAdmin();
-      // Allow gym owners to read their own license
-      allow read: if isAuthenticated() && (resource == null || resource.data.ownerEmail == request.auth.token.email);
     }
   }
 }

@@ -9,8 +9,8 @@ import { IInvoiceRepository } from '../../../application/ports/IInvoiceRepositor
 import { BaseFirestoreRepository } from './BaseFirestoreRepository';
 
 export class FirestoreInvoiceRepository extends BaseFirestoreRepository<Invoice> implements IInvoiceRepository {
-  constructor(db: Firestore) {
-    super(db, 'invoices', 'dueDate');
+  constructor(db: Firestore, tenantId: string = 'default_gym') {
+    super(db, 'invoices', 'dueDate', tenantId);
   }
 
   private buildConstraints(filters?: InvoiceFilters): QueryConstraint[] {

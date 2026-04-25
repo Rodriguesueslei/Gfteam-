@@ -4,8 +4,8 @@ import { IEvaluationRepository } from '../../../application/ports/IEvaluationRep
 import { BaseFirestoreRepository } from './BaseFirestoreRepository';
 
 export class FirestoreEvaluationRepository extends BaseFirestoreRepository<Evaluation> implements IEvaluationRepository {
-  constructor(db: Firestore) {
-    super(db, 'evaluations', 'date');
+  constructor(db: Firestore, tenantId: string = 'default_gym') {
+    super(db, 'evaluations', 'date', tenantId);
   }
 
   async getAll(): Promise<Evaluation[]> {

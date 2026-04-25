@@ -6,11 +6,11 @@ import { FirestoreInvoiceRepository } from '../../infrastructure/firebase/reposi
 export function useInvoices(enabled: boolean) {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
-  const { tenantDb } = useAuth();
+  const { tenantDb, tenantId } = useAuth();
 
   const repository = useMemo(() => {
-    return tenantDb ? new FirestoreInvoiceRepository(tenantDb) : null;
-  }, [tenantDb]);
+    return tenantDb ? new FirestoreInvoiceRepository(tenantDb, tenantId) : null;
+  }, [tenantDb, tenantId]);
 
   useEffect(() => {
     if (!enabled || !repository) {

@@ -6,11 +6,11 @@ import { useAuth } from '../../contexts/AuthContext';
 export const useUsers = (subscribe: boolean = true, filters?: UserFilters) => {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const { tenantDb } = useAuth();
+  const { tenantDb, tenantId } = useAuth();
 
   const repository = useMemo(() => {
-    return tenantDb ? new FirestoreUserRepository(tenantDb) : null;
-  }, [tenantDb]);
+    return tenantDb ? new FirestoreUserRepository(tenantDb, tenantId) : null;
+  }, [tenantDb, tenantId]);
 
   useEffect(() => {
     if (!repository) return;

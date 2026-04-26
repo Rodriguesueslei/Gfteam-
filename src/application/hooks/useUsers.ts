@@ -13,13 +13,8 @@ export const useUsers = (subscribe: boolean = true, filters?: UserFilters) => {
   }, [tenantDb, tenantId]);
 
   useEffect(() => {
-    if (!repository) return;
-
-    if (!subscribe) {
-      repository.getAllUsers(filters).then(data => {
-        setUsers(data);
-        setLoading(false);
-      });
+    if (!repository || !subscribe) {
+      setLoading(false);
       return;
     }
 

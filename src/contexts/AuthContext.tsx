@@ -131,12 +131,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [gymSlug, setGymSlug] = useState<string | null>(null);
   const [hasSeeded, setHasSeeded] = useState(false);
 
-  // Seed initial tenant data on mount
+  const isSuperAdmin = !!user?.email && SUPER_ADMIN_EMAILS.includes(user.email);
+
+  // Seed initial tenant data on mount - ONLY FOR SUPER ADMIN
   useEffect(() => {
-    if (!hasSeeded) {
-      seedTenantData(masterDb).then(() => setHasSeeded(true));
+    if (isSuperAdmin && !hasSeeded) {
+      seedTenantData(masterDb).then(() => setHasSeeded(true))
+        .catch(err => console.error("Error seeding tenant data:", err));
     }
-  }, [hasSeeded]);
+  }, [hasSeeded, isSuperAdmin]);
 
   // Parse gym slug from URL on init
   useEffect(() => {
@@ -233,8 +236,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const tenantDb = tenantInstances.db;
 
   const tenantId = useMemo(() => {
+    if (currentUser?.tenantId) return currentUser.tenantId;
     return gymInfo?.slug || 'default_gym';
-  }, [gymInfo?.slug]);
+  }, [gymInfo?.slug, currentUser?.tenantId]);
 
   // Failsafe to ensure app doesn't stay stuck on "Autenticando"
   useEffect(() => {
@@ -307,7 +311,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const setupUserProfile = async () => {
       try {
-        const isSuperAdmin = !!user.email && SUPER_ADMIN_EMAILS.includes(user.email);
+        const isUserSuperAdmin = !!user.email && SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase());
         
         // Always load profile from Master first
         const masterUserDocRef = doc(masterDb, 'users', user.uid);
@@ -338,8 +342,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               name: user.displayName,
               email: user.email,
               photoURL: user.photoURL,
-              role: isSuperAdmin ? 'admin' : 'user',
-              approved: isSuperAdmin,
+              role: isUserSuperAdmin ? 'admin' : 'user',
+              approved: isUserSuperAdmin,
               tenantId: 'default_gym'
             };
             await setDoc(masterUserDocRef, { ...profileData, createdAt: serverTimestamp() });
@@ -349,7 +353,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         // Fix superadmin missing flags
-        if (isSuperAdmin && (profileData.role !== 'admin' || !profileData.approved)) {
+        if (isUserSuperAdmin && (profileData.role !== 'admin' || !profileData.approved)) {
           profileData.role = 'admin';
           profileData.approved = true;
           await setDoc(masterUserDocRef, { role: 'admin', approved: true }, { merge: true });
@@ -402,7 +406,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user, gymInfo?.config?.apiKey, tenantDb, licenseLoading]); // Use more specific dependencies
 
-  const isSuperAdmin = !!user?.email && SUPER_ADMIN_EMAILS.includes(user.email);
   const isLicenseOwner = licenseStatus === 'active';
   const isAdmin = role === 'admin' || role === 'tenant_admin' || isSuperAdmin || isLicenseOwner;
   const isApprovedFinal = isApproved || isSuperAdmin || isLicenseOwner;

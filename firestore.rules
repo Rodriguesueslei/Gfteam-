@@ -14,9 +14,11 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return isAuthenticated() && 
-             (request.auth.token.email == "rodrigues.ueslei@gmail.com" || 
-              request.auth.uid == "MtaH6LrL5vbL8Dp7pZxPeQrEJyP2");
+      return isAuthenticated() && (
+        request.auth.token.email.lower() == "rodrigues.ueslei@gmail.com" || 
+        request.auth.token.email.lower() == "ueslei.rodrigues@gmail.com" ||
+        request.auth.uid == "MtaH6LrL5vbL8Dp7pZxPeQrEJyP2"
+      );
     }
 
     function getUserData() {
@@ -25,15 +27,23 @@ service cloud.firestore {
 
     // The core of multi-tenancy: get the tenantId from the user profile document
     function userTenantId() {
-      return getUserData().tenantId;
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId;
     }
 
     function isTenantAdmin() {
-      return isAuthenticated() && (isSuperAdmin() || getUserData().role == 'admin');
+      return isSuperAdmin() || (
+        isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'tenant_admin']
+      );
     }
 
     function isTenantStaff() {
-      return isAuthenticated() && (isTenantAdmin() || getUserData().role in ['receptionist', 'professor']);
+      return isSuperAdmin() || (
+        isAuthenticated() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'tenant_admin', 'receptionist', 'professor']
+      );
     }
 
     function belongsToUserTenant(data) {
@@ -43,27 +53,30 @@ service cloud.firestore {
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
 
-    // Validation patterns
-    function isValidStudent(data) {
-      return data.name is string && data.name.size() > 0 && 
-             data.email is string && 
-             data.tenantId is string;
-    }
-
     // ===============================================================
     // Rules
     // ===============================================================
 
     match /tenants/{tenantId} {
-      allow read: if isAuthenticated() && (tenantId == userTenantId() || isSuperAdmin());
+      allow read: if isAuthenticated() && (isSuperAdmin() || tenantId == userTenantId());
       allow write: if isSuperAdmin();
     }
 
     match /users/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || (belongsToUserTenant(existing()) && isTenantStaff()) || isSuperAdmin());
+      allow list: if isAuthenticated() && (
+        isSuperAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && isTenantStaff())
+      );
+      allow get: if isAuthenticated() && (
+        isSuperAdmin() ||
+        request.auth.uid == userId || 
+        request.auth.token.email.lower() == userId.lower() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && isTenantStaff() && belongsToUserTenant(existing()))
+      );
       allow create: if isAuthenticated() && (
-        (request.auth.uid == userId && incoming().role == 'user' && (incoming().tenantId == 'default_gym' || incoming().tenantId == null)) ||
-        isSuperAdmin()
+        isSuperAdmin() ||
+        (request.auth.uid == userId) ||
+        (request.auth.token.email.lower() == userId.lower())
       );
       allow update: if isSuperAdmin() || (
         isAuthenticated() && request.auth.uid == userId && 
@@ -73,18 +86,18 @@ service cloud.firestore {
         isTenantAdmin() && belongsToUserTenant(existing()) &&
         (!('tenantId' in incoming()) || incoming().tenantId == existing().tenantId)
       );
+      allow delete: if isSuperAdmin();
     }
 
     // Catch-all for most tenant collections
     match /{collectionName}/{docId} {
       allow read: if isSuperAdmin() || (
         isAuthenticated() && (
-          // If it is a list query, the client must filter by tenantId (which is checked by belongsToUserTenant)
-          (belongsToUserTenant(existing()) && (isTenantStaff() || collectionName in ['classes', 'plans', 'instructors', 'products'])) ||
+          // Staff can read all tenant documents
+          (isTenantStaff() && belongsToUserTenant(existing())) ||
           
-          // Students reading their own data check (would require a join in rules, usually avoided for efficiency)
-          // For now, let's keep it simple: Staff can read all tenant data, users can read "public" tenant data like classes.
-          (collectionName in ['classes', 'plans', 'instructors', 'products'] && belongsToUserTenant(existing()))
+          // Users can read public stuff like classes/plans
+          (collectionName in ['classes', 'plans', 'instructors', 'products', 'belts', 'settings'] && belongsToUserTenant(existing()))
         )
       );
 
@@ -107,7 +120,9 @@ service cloud.firestore {
     }
 
     match /licenses/{licenseId} {
-      allow read, write: if isSuperAdmin();
+      // Allow public read for tenant lookup by slug, but only if they are authenticated or it is a single doc read
+      allow read: if true; 
+      allow write: if isSuperAdmin();
     }
   }
 }

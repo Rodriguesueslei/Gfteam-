@@ -1,12 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Firestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { Firestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, where, serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '../../contexts/AuthContext';
 import toast from 'react-hot-toast';
 
 export function useBelts() {
   const [belts, setBelts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const { tenantDb } = useAuth();
+  const { tenantDb, tenantId } = useAuth();
 
   useEffect(() => {
     if (!tenantDb) {
@@ -14,24 +14,40 @@ export function useBelts() {
       return;
     }
 
-    const q = query(collection(tenantDb, 'belts'), orderBy('order', 'asc'));
+    const q = query(
+      collection(tenantDb, 'belts'), 
+      where('tenantId', '==', tenantId),
+      orderBy('order', 'asc')
+    );
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setBelts(data);
       setLoading(false);
+    }, (error) => {
+      console.error("Error subscribing to belts:", error);
+      setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [tenantDb]);
+  }, [tenantDb, tenantId]);
 
   const saveBelt = async (id: string | null, data: any) => {
     if (!tenantDb) return;
     try {
+      const beltData = {
+        ...data,
+        tenantId,
+        updatedAt: serverTimestamp()
+      };
+      
       if (id) {
-        await updateDoc(doc(tenantDb, 'belts', id), data);
+        await updateDoc(doc(tenantDb, 'belts', id), beltData);
         toast.success("Faixa atualizada!");
       } else {
-        await addDoc(collection(tenantDb, 'belts'), data);
+        await addDoc(collection(tenantDb, 'belts'), {
+          ...beltData,
+          createdAt: serverTimestamp()
+        });
         toast.success("Faixa criada!");
       }
     } catch (error) {

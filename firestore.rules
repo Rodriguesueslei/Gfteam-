@@ -27,7 +27,9 @@ service cloud.firestore {
 
     // The core of multi-tenancy: get the tenantId from the user profile document
     function userTenantId() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId;
+      return (isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.tenantId 
+        : "default_gym";
     }
 
     function isTenantAdmin() {

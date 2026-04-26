@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 export function usePayments(enabled: boolean, isAdmin?: boolean, studentIds?: string[]) {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
-  const { tenantDb, tenantId } = useAuth();
+  const { tenantDb, tenantId, user } = useAuth();
 
   const repository = useMemo(() => {
     return tenantDb ? new FirestorePaymentRepository(tenantDb, tenantId) : null;
@@ -19,7 +19,7 @@ export function usePayments(enabled: boolean, isAdmin?: boolean, studentIds?: st
   }, [repository, tenantDb]);
 
   useEffect(() => {
-    if (!enabled || !repository) {
+    if (!enabled || !repository || !user) {
       setLoading(false);
       return;
     }

@@ -6,10 +6,10 @@ import toast from 'react-hot-toast';
 export function useBelts() {
   const [belts, setBelts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const { tenantDb, tenantId } = useAuth();
+  const { tenantDb, tenantId, user } = useAuth();
 
   useEffect(() => {
-    if (!tenantDb) {
+    if (!tenantDb || !user) {
       setLoading(false);
       return;
     }

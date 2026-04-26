@@ -8,14 +8,14 @@ export function useSettings() {
   const [settings, setSettings] = useState<ISettings | null>(null);
   const [secrets, setSecrets] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const { tenantDb, isAdmin, tenantId } = useAuth();
+  const { tenantDb, isAdmin, tenantId, user } = useAuth();
 
   const repository = useMemo(() => {
     return tenantDb ? new FirestoreSettingsRepository(tenantDb, tenantId) : null;
   }, [tenantDb, tenantId]);
 
   useEffect(() => {
-    if (!repository) {
+    if (!repository || !user) {
       setLoading(false);
       return;
     }

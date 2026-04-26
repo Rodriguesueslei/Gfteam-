@@ -131,7 +131,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [gymSlug, setGymSlug] = useState<string | null>(null);
   const [hasSeeded, setHasSeeded] = useState(false);
 
-  const isSuperAdmin = !!user?.email && SUPER_ADMIN_EMAILS.includes(user.email);
+  const isSuperAdmin = useMemo(() => 
+    !!user?.email && SUPER_ADMIN_EMAILS.includes(user.email.toLowerCase()),
+  [user?.email]);
 
   // Seed initial tenant data on mount - ONLY FOR SUPER ADMIN
   useEffect(() => {

@@ -10,7 +10,7 @@ import { useAuth } from '../../contexts/AuthContext';
 export function useStudents(enabled: boolean, isAdmin?: boolean, userEmail?: string | null) {
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
-  const { tenantDb, tenantId } = useAuth();
+  const { tenantDb, tenantId, user } = useAuth();
 
   const repository = useMemo(() => {
     return tenantDb ? new FirestoreStudentRepository(tenantDb, tenantId) : null;
@@ -25,7 +25,7 @@ export function useStudents(enabled: boolean, isAdmin?: boolean, userEmail?: str
   }, [tenantDb, tenantId]);
 
   useEffect(() => {
-    if (!enabled || !repository) {
+    if (!enabled || !repository || !user) {
       setLoading(false);
       return;
     }

@@ -7,7 +7,7 @@ import { CheckInService } from '../services/CheckInService';
 export function useCheckIn(enabled: boolean, isAdmin?: boolean, studentIds?: string[]) {
   const [checkIns, setCheckIns] = useState<CheckIn[]>([]);
   const [loading, setLoading] = useState(true);
-  const { tenantDb, tenantId } = useAuth();
+  const { tenantDb, tenantId, user } = useAuth();
 
   const repository = useMemo(() => {
     return tenantDb ? new FirestoreCheckInRepository(tenantDb, tenantId) : null;
@@ -18,7 +18,7 @@ export function useCheckIn(enabled: boolean, isAdmin?: boolean, studentIds?: str
   }, [repository, tenantDb]);
 
   useEffect(() => {
-    if (!enabled || !repository) {
+    if (!enabled || !repository || !user) {
       setLoading(false);
       return;
     }

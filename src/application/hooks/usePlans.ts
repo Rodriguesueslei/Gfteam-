@@ -7,14 +7,14 @@ import toast from 'react-hot-toast';
 export const usePlans = (enabled: boolean = true) => {
   const [plans, setPlans] = useState<IPlan[]>([]);
   const [loading, setLoading] = useState(true);
-  const { tenantDb, tenantId } = useAuth();
+  const { tenantDb, tenantId, user } = useAuth();
 
   const repository = useMemo(() => {
     return tenantDb ? new FirestorePlanRepository(tenantDb, tenantId) : null;
   }, [tenantDb, tenantId]);
 
   useEffect(() => {
-    if (!enabled || !repository) {
+    if (!enabled || !repository || !user) {
       setLoading(false);
       return;
     }
